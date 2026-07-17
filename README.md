@@ -13,12 +13,14 @@ deciding what's urgent.
 
 ## Features
 
+- Email/password accounts (bcrypt-hashed), Google sign-in, or a guest mode
+  that needs no account
 - Manual entry of a lipid panel, glucose/HbA1c, and blood pressure
 - Rule-based flagging against standard adult reference ranges (NCEP ATP III
   cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood pressure
   categories)
 - AI-generated plain-language summary and lifestyle suggestions (Claude API)
-- Trend charts across entries stored locally in SQLite
+- Trend charts across entries, scoped per account, stored locally in SQLite
 
 ## Setup
 
@@ -31,13 +33,34 @@ streamlit run app.py
 Without an API key configured, the app still works — it shows the rule-based
 results and flags, just without the AI-generated summary.
 
+### Accounts
+
+- **Email/password**: sign up directly in the app. Passwords need 8+
+  characters, one number, and one uppercase letter.
+- **Guest**: try the app with no account — data is kept only in that browser
+  session and is gone once the tab is closed.
+- **Google sign-in** (optional): requires your own Google OAuth credentials.
+  1. In [Google Cloud Console](https://console.cloud.google.com/), create an
+     OAuth 2.0 Client ID (type: Web application).
+  2. Add `http://localhost:8501` as an authorized redirect URI.
+  3. Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and
+     fill in your own `client_id` and `client_secret`.
+
+  Note on how Google sign-in is verified: rather than a JWT/OIDC library
+  (which needs the `cryptography` package — not buildable in this dev
+  environment without a Rust toolchain), the ID token is verified by calling
+  Google's own `tokeninfo` endpoint. That's a Google-documented approach and
+  fine at this app's scale, though a high-traffic production app should
+  verify signatures locally instead.
+
 ## Project structure
 
 ```
-app.py                 Streamlit UI
-reference_ranges.py     reference ranges + flagging rules
+app.py                  Streamlit UI (auth gate + main app)
+auth.py                  password hashing/validation, Google OAuth flow
+reference_ranges.py      reference ranges + flagging rules
 ai_advice.py             Claude API prompt + call
-db.py                    local SQLite storage for entry history
+db.py                    local SQLite storage: users + entry history
 ```
 
 ## Scope note
