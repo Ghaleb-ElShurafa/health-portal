@@ -1,18 +1,11 @@
 """Generates diet and exercise plans for the Wellness Coach service via the
-Claude API. As with ai_advice.py, the "needs doctor clearance before
+Gemini API. As with ai_advice.py, the "needs doctor clearance before
 exercise" flag is always computed independently with rule-based logic
 (services/wellness_coach.py) and shown in the UI regardless of what the
 model says — the AI only writes the plan text, never decides medical safety.
 """
 
-import os
-
-from anthropic import Anthropic
-from dotenv import load_dotenv
-
-load_dotenv()
-
-MODEL = "claude-sonnet-5"
+import gemini_client
 
 DISCLAIMER = (
     "This is a general wellness suggestion, not medical or nutritional advice tailored "
@@ -22,7 +15,7 @@ DISCLAIMER = (
 
 
 def is_configured():
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return gemini_client.is_configured()
 
 
 def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire):
@@ -63,16 +56,13 @@ def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire):
 def get_plan(profile, bloodwork_summary, needs_clearance, questionnaire):
     if not is_configured():
         return (
-            "AI plan unavailable: no ANTHROPIC_API_KEY configured. "
+            "AI plan unavailable: no GEMINI_API_KEY configured. "
             "See README for setup instructions."
         )
 
-    client = Anthropic()
     prompt = _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire)
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=700,
+    return gemini_client.generate(
+        system_prompt=None,
         messages=[{"role": "user", "content": prompt}],
+        max_tokens=700,
     )
-    return response.content[0].text

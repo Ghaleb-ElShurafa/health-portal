@@ -1,5 +1,5 @@
 """Generates plain-language explanations and lifestyle suggestions via the
-Claude API, given rule-based flags computed locally (reference_ranges.py).
+Gemini API, given rule-based flags computed locally (reference_ranges.py).
 
 The rule-based "consult a doctor" flag is always computed independently and
 displayed in the UI regardless of what the model says — the AI is only
@@ -7,14 +7,7 @@ responsible for the explanatory text, never for deciding whether a finding
 is urgent.
 """
 
-import os
-
-from anthropic import Anthropic
-from dotenv import load_dotenv
-
-load_dotenv()
-
-MODEL = "claude-sonnet-5"
+import gemini_client
 
 DISCLAIMER = (
     "This is general educational information, not medical advice or a diagnosis. "
@@ -23,7 +16,7 @@ DISCLAIMER = (
 
 
 def is_configured():
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return gemini_client.is_configured()
 
 
 def _build_prompt(results, sex):
@@ -54,16 +47,13 @@ def get_advice(results, sex):
     """results: list of (display_name, unit, value, Flag) tuples."""
     if not is_configured():
         return (
-            "AI explanation unavailable: no ANTHROPIC_API_KEY configured. "
+            "AI explanation unavailable: no GEMINI_API_KEY configured. "
             "Showing rule-based results only. See README for setup instructions."
         )
 
-    client = Anthropic()
     prompt = _build_prompt(results, sex)
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=500,
+    return gemini_client.generate(
+        system_prompt=None,
         messages=[{"role": "user", "content": prompt}],
+        max_tokens=500,
     )
-    return response.content[0].text

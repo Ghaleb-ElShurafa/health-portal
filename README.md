@@ -20,11 +20,11 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   get rule-based flags against standard adult reference ranges (NCEP ATP III
   cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood pressure
   categories), an AI-generated plain-language summary, and trend charts.
-- **Wellness Coach**: a diet + exercise plan from the Claude API, informed by
+- **Wellness Coach**: a diet + exercise plan from the Gemini API, informed by
   your latest Personal Doctor bloodwork when available (falls back to a
   short questionnaire otherwise). Recommends medical clearance before
   exercise whenever bloodwork has a "consult a doctor" flag.
-- **AI search bar**: ask anything on the landing page (Claude API).
+- **AI search bar**: ask anything on the landing page (Gemini API).
 - **Help & Support sidebar**: an AI chat for navigation/technical questions,
   plus a "report a technical issue" form that logs to the admin dashboard.
 - **Admin dashboard** (for admin accounts): manage users (grant/revoke admin,
@@ -36,13 +36,27 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 
 ```
 pip install -r requirements.txt
-cp .env.example .env        # then edit .env and add your own Anthropic API key
+cp .env.example .env        # then edit .env and add your own free Gemini API key
 streamlit run app.py
 ```
+
+Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com)
+(no credit card required — see "AI features" below for details).
 
 Without an API key configured, the app still works — it shows rule-based
 results and flags, just without AI-generated text (summaries, plans, search,
 help chat).
+
+### AI features (Gemini)
+
+AI text (bloodwork summaries, Wellness Coach plans, the search bar, and the
+help chat) runs on Google's [Gemini API](https://aistudio.google.com), using
+Gemini's free tier — no credit card needed, ~1,500 requests/day. The client
+(`gemini_client.py`) talks to Gemini's REST API directly via `requests`
+rather than Google's official SDK, since that SDK depends on `google-auth` →
+`cryptography`, which needs a Rust toolchain not available in this dev
+environment. Gemini API keys are simple bearer keys (not OAuth), so a plain
+HTTP call works fine without any of that.
 
 ### Accounts
 
@@ -83,7 +97,7 @@ free, deploys straight from this GitHub repo, and gives you a URL like
 3. In the app's **Settings → Secrets**, paste in (this is where credentials
    belong — never commit them):
    ```
-   ANTHROPIC_API_KEY = "..."
+   GEMINI_API_KEY = "..."
    TURSO_DATABASE_URL = "libsql://your-db-name.turso.io"
    TURSO_AUTH_TOKEN = "..."
 
@@ -93,6 +107,10 @@ free, deploys straight from this GitHub repo, and gives you a URL like
    redirect_uri = "https://your-app-name.streamlit.app"
    ```
 4. Deploy. Every `git push` to this repo redeploys automatically.
+
+   **Important:** saving secrets does not reliably auto-restart the app —
+   after adding/changing secrets, manually click **"Reboot app"** (Manage
+   app panel) or the new values won't be picked up.
 
 ### Persistent storage (Turso)
 
@@ -136,9 +154,10 @@ pwa.py                      patches Streamlit's static files to make the
                             app installable (manifest, service worker)
 pwa/                        PWA manifest, service worker, and icons
 reference_ranges.py        reference ranges + flagging rules (admin-editable)
-ai_advice.py                Claude API: Personal Doctor bloodwork summaries
-ai_wellness.py               Claude API: Wellness Coach diet/exercise plans
-ai_assistant.py              Claude API: site search bar + help chat
+gemini_client.py            minimal Gemini REST client (no official SDK)
+ai_advice.py                 Personal Doctor bloodwork summaries
+ai_wellness.py                Wellness Coach diet/exercise plans
+ai_assistant.py               site search bar + help chat
 services/personal_doctor.py  Personal Doctor service UI
 services/wellness_coach.py   Wellness Coach service UI
 ```

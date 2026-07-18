@@ -113,7 +113,7 @@ def render(user, thresholds):
 
         if not ai_wellness.is_configured():
             st.info(
-                "Set `ANTHROPIC_API_KEY` in a `.env` file to enable AI-generated plans "
+                "Set `GEMINI_API_KEY` in a `.env` file to enable AI-generated plans "
                 "(see README)."
             )
         else:

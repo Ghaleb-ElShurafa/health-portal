@@ -110,7 +110,7 @@ def render(user, thresholds):
             st.subheader("AI summary & suggestions")
             if not is_configured():
                 st.info(
-                    "Set `ANTHROPIC_API_KEY` in a `.env` file to enable AI-generated "
+                    "Set `GEMINI_API_KEY` in a `.env` file to enable AI-generated "
                     "explanations (see README). Showing rule-based results only for now."
                 )
             else:
