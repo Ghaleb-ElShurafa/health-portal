@@ -17,10 +17,26 @@ from reference_ranges import DEFAULT_THRESHOLDS
 
 load_dotenv()
 
+
+def _config(key):
+    """Reads from the environment first (local .env), falling back to
+    st.secrets (Streamlit Community Cloud puts secrets there, not
+    necessarily into os.environ)."""
+    value = os.environ.get(key)
+    if value:
+        return value
+    try:
+        import streamlit as st
+
+        return st.secrets.get(key)
+    except Exception:
+        return None
+
+
 DB_PATH = Path(__file__).parent / "data" / "personal_doctor.db"
 
-TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL")
-TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+TURSO_DATABASE_URL = _config("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = _config("TURSO_AUTH_TOKEN")
 USE_REMOTE_DB = bool(TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
 
 COLUMNS = [
