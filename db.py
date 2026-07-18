@@ -1,11 +1,27 @@
-"""SQLite storage: registered users, their lab entries, and site settings."""
+"""Storage: registered users, their lab entries, and site settings.
 
+Uses a local SQLite file by default. If TURSO_DATABASE_URL and
+TURSO_AUTH_TOKEN are set (e.g. for a hosted deployment where local disk
+storage isn't reliably persistent), it transparently switches to a remote
+Turso (libSQL) database instead — same SQL, same query patterns throughout
+this file, via the small compatibility wrapper below.
+"""
+
+import os
 import sqlite3
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from reference_ranges import DEFAULT_THRESHOLDS
 
+load_dotenv()
+
 DB_PATH = Path(__file__).parent / "data" / "personal_doctor.db"
+
+TURSO_DATABASE_URL = os.environ.get("TURSO_DATABASE_URL")
+TURSO_AUTH_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+USE_REMOTE_DB = bool(TURSO_DATABASE_URL and TURSO_AUTH_TOKEN)
 
 COLUMNS = [
     "total_cholesterol", "ldl", "hdl", "triglycerides",
@@ -15,7 +31,42 @@ COLUMNS = [
 ANNOUNCEMENT_KEY = "announcement"
 
 
+class _RemoteCursor:
+    """Makes a libsql_client ResultSet look like a sqlite3 cursor."""
+
+    def __init__(self, result_set):
+        self._rs = result_set
+        self.lastrowid = result_set.last_insert_rowid
+
+    def fetchone(self):
+        return self._rs.rows[0].asdict() if self._rs.rows else None
+
+    def fetchall(self):
+        return [row.asdict() for row in self._rs.rows]
+
+
+class _RemoteConn:
+    """Makes a libsql_client ClientSync look like a sqlite3 connection."""
+
+    def __init__(self, client):
+        self._client = client
+
+    def execute(self, sql, params=()):
+        return _RemoteCursor(self._client.execute(sql, list(params)))
+
+    def commit(self):
+        pass  # each statement over the Hrana/HTTP protocol is auto-committed
+
+    def close(self):
+        self._client.close()
+
+
 def _connect():
+    if USE_REMOTE_DB:
+        import libsql_client
+
+        return _RemoteConn(libsql_client.create_client_sync(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN))
+
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -54,8 +105,9 @@ def init_db():
     ]:
         try:
             conn.execute(statement)
-        except sqlite3.OperationalError:
-            pass  # column already exists
+        except Exception as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
     columns_sql = ", ".join(f"{c} REAL" for c in COLUMNS)
     conn.execute(

@@ -71,6 +71,58 @@ There's no signup toggle for admin — the first admin account is promoted
 directly in the database (`db.set_admin(user_id, True)`). Admins can grant
 or revoke admin for other accounts from the Users tab in the dashboard.
 
+## Deploying to a public URL
+
+The recommended path is [Streamlit Community Cloud](https://streamlit.io/cloud) —
+free, deploys straight from this GitHub repo, and gives you a URL like
+`https://your-app-name.streamlit.app`.
+
+1. Sign in at [share.streamlit.io](https://share.streamlit.io) with your
+   GitHub account and authorize it to access this repo.
+2. Click "New app", pick this repo/branch, and set the main file to `app.py`.
+3. In the app's **Settings → Secrets**, paste in (this is where credentials
+   belong — never commit them):
+   ```
+   ANTHROPIC_API_KEY = "..."
+   TURSO_DATABASE_URL = "libsql://your-db-name.turso.io"
+   TURSO_AUTH_TOKEN = "..."
+
+   [google_oauth]
+   client_id = "..."
+   client_secret = "..."
+   redirect_uri = "https://your-app-name.streamlit.app"
+   ```
+4. Deploy. Every `git push` to this repo redeploys automatically.
+
+### Persistent storage (Turso)
+
+Local SQLite (the default) works great for development, but most hosting
+platforms — including Streamlit Community Cloud — don't guarantee that disk
+survives a restart or redeploy. For a public deployment, point the app at a
+free [Turso](https://turso.tech) database (SQLite-compatible, so no schema
+changes needed) instead:
+
+1. Sign up at [turso.tech](https://turso.tech) (free tier).
+2. Create a database: `turso db create health-portal` (via their CLI, or the
+   web dashboard).
+3. Get the URL: `turso db show health-portal --url`
+4. Create an auth token: `turso db tokens create health-portal`
+5. Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` — locally in `.env`, and
+   on Streamlit Cloud in Settings → Secrets (step 3 above).
+
+If those two variables aren't set, the app automatically falls back to the
+local SQLite file — nothing else to configure either way.
+
+## Installing as an app (PWA)
+
+Once deployed to a public HTTPS URL (PWAs require a secure context — plain
+`localhost` works for testing, but not a bare HTTP address), visit the site
+in Chrome/Edge and use the browser's **Install** option (an icon in the
+address bar, or "Install app" in the menu) to add it as a standalone app
+with its own icon and window — no app store needed. Because it's the same
+deployed URL, it always reflects your latest `git push`; there's nothing
+separate to keep in sync.
+
 ## Project structure
 
 ```
@@ -78,8 +130,11 @@ app.py                    Portal shell: auth gate, landing page, sidebar
                            help chat, admin dashboard, routing between services
 auth.py                    password hashing/validation, Google OAuth flow,
                             "keep me logged in" tokens
-db.py                      local SQLite storage: users, entries, settings,
-                            issues
+db.py                      storage: users, entries, settings, issues —
+                            local SQLite by default, or Turso if configured
+pwa.py                      patches Streamlit's static files to make the
+                            app installable (manifest, service worker)
+pwa/                        PWA manifest, service worker, and icons
 reference_ranges.py        reference ranges + flagging rules (admin-editable)
 ai_advice.py                Claude API: Personal Doctor bloodwork summaries
 ai_wellness.py               Claude API: Wellness Coach diet/exercise plans

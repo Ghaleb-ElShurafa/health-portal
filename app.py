@@ -8,8 +8,10 @@ import ai_assistant
 import auth
 import db
 import reference_ranges as rr
+from pwa import ensure_pwa_assets
 from services import personal_doctor, wellness_coach
 
+ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
 db.init_db()
 
