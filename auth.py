@@ -1,6 +1,6 @@
 """
-Authentication: email/password accounts (bcrypt-hashed), guest mode, and
-Google sign-in.
+Authentication: email/password accounts (bcrypt-hashed), guest mode, Google
+sign-in, and "keep me logged in" persistent sessions.
 
 Google OAuth is implemented manually with plain HTTP calls (via `requests`)
 rather than a JWT/OIDC library, because this environment can't build the
@@ -10,10 +10,15 @@ of verifying the ID token's signature locally, we send it to Google's
 claims. This is a documented, Google-supported pattern that's fine for an
 app at this scale; it does mean each login makes an extra call to Google
 rather than verifying the signature offline.
+
+"Keep me logged in" stores a random bearer token (like a session ID, not a
+password) in a browser cookie set client-side by app.py. It doesn't need
+password-style hashing since it's high-entropy and never user-chosen.
 """
 
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import requests
@@ -24,6 +29,10 @@ import db
 GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 GOOGLE_TOKENINFO_ENDPOINT = "https://oauth2.googleapis.com/tokeninfo"
+
+REMEMBER_TOKEN_DAYS = 30
+MIN_AGE = 13
+MAX_AGE = 120
 
 
 def _google_config():
@@ -49,7 +58,32 @@ def validate_password_strength(password):
     return True, ""
 
 
-def sign_up(email, password):
+def validate_profile(first_name, last_name, age, country):
+    if not first_name.strip():
+        return False, "First name is required."
+    if not last_name.strip():
+        return False, "Last name is required."
+    if not country.strip():
+        return False, "Country of residence is required."
+    if age is None or age < MIN_AGE or age > MAX_AGE:
+        return False, f"Age must be between {MIN_AGE} and {MAX_AGE}."
+    return True, ""
+
+
+def _public_user(row):
+    return {
+        "id": row["id"],
+        "email": row["email"],
+        "auth_provider": row["auth_provider"],
+        "is_admin": bool(row["is_admin"]),
+        "first_name": row["first_name"],
+        "last_name": row["last_name"],
+        "age": row["age"],
+        "country": row["country"],
+    }
+
+
+def sign_up(email, password, first_name, last_name, age, country):
     import bcrypt
 
     if db.get_user_by_email(email):
@@ -59,9 +93,21 @@ def sign_up(email, password):
     if not ok:
         return None, message
 
+    ok, message = validate_profile(first_name, last_name, age, country)
+    if not ok:
+        return None, message
+
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    user_id = db.create_user(email, password_hash=password_hash, auth_provider="password")
-    return {"id": user_id, "email": email, "auth_provider": "password"}, ""
+    user_id = db.create_user(
+        email,
+        password_hash=password_hash,
+        auth_provider="password",
+        first_name=first_name.strip(),
+        last_name=last_name.strip(),
+        age=age,
+        country=country.strip(),
+    )
+    return _public_user(db.get_user_by_email(email)), ""
 
 
 def log_in(email, password):
@@ -74,7 +120,7 @@ def log_in(email, password):
     if not bcrypt.checkpw(password.encode(), user["password_hash"].encode()):
         return None, "No account found with that email and password."
 
-    return {"id": user["id"], "email": user["email"], "auth_provider": "password"}, ""
+    return _public_user(user), ""
 
 
 def build_google_auth_url():
@@ -134,8 +180,35 @@ def complete_google_login(code, state):
         existing = db.get_user_by_email(email)
         if existing:
             return None, "An account with this email already exists using password sign-in."
-        user_id = db.create_user(email, auth_provider="google", google_sub=google_sub)
-    else:
-        user_id = user["id"]
+        user_id = db.create_user(
+            email,
+            auth_provider="google",
+            google_sub=google_sub,
+            first_name=claims.get("given_name"),
+            last_name=claims.get("family_name"),
+        )
+        user = db.get_user_by_email(email)
 
-    return {"id": user_id, "email": email, "auth_provider": "google"}, ""
+    return _public_user(user), ""
+
+
+def create_remember_token(user_id):
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=REMEMBER_TOKEN_DAYS)).isoformat()
+    db.set_remember_token(user_id, token, expires_at)
+    return token
+
+
+def get_user_by_remember_token(token):
+    row = db.get_user_by_remember_token(token)
+    if not row:
+        return None
+    expires_at = row["remember_token_expires"]
+    if not expires_at or datetime.fromisoformat(expires_at) < datetime.now(timezone.utc):
+        db.clear_remember_token(row["id"])
+        return None
+    return _public_user(row)
+
+
+def clear_remember_token(user_id):
+    db.clear_remember_token(user_id)

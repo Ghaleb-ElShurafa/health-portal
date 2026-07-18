@@ -1,7 +1,9 @@
-"""SQLite storage: registered users and their lab entries over time."""
+"""SQLite storage: registered users, their lab entries, and site settings."""
 
 import sqlite3
 from pathlib import Path
+
+from reference_ranges import DEFAULT_THRESHOLDS
 
 DB_PATH = Path(__file__).parent / "data" / "personal_doctor.db"
 
@@ -9,6 +11,8 @@ COLUMNS = [
     "total_cholesterol", "ldl", "hdl", "triglycerides",
     "glucose_fasting", "hba1c", "systolic", "diastolic",
 ]
+
+ANNOUNCEMENT_KEY = "announcement"
 
 
 def _connect():
@@ -28,10 +32,31 @@ def init_db():
             password_hash TEXT,
             auth_provider TEXT NOT NULL,
             google_sub TEXT UNIQUE,
+            is_admin INTEGER NOT NULL DEFAULT 0,
+            first_name TEXT,
+            last_name TEXT,
+            age INTEGER,
+            country TEXT,
+            remember_token TEXT,
+            remember_token_expires TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
+    for statement in [
+        "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN first_name TEXT",
+        "ALTER TABLE users ADD COLUMN last_name TEXT",
+        "ALTER TABLE users ADD COLUMN age INTEGER",
+        "ALTER TABLE users ADD COLUMN country TEXT",
+        "ALTER TABLE users ADD COLUMN remember_token TEXT",
+        "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
+    ]:
+        try:
+            conn.execute(statement)
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
     columns_sql = ", ".join(f"{c} REAL" for c in COLUMNS)
     conn.execute(
         f"""
@@ -44,15 +69,45 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS issues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            description TEXT NOT NULL,
+            chat_context TEXT,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
 
-def create_user(email, password_hash=None, auth_provider="password", google_sub=None):
+def create_user(
+    email,
+    password_hash=None,
+    auth_provider="password",
+    google_sub=None,
+    first_name=None,
+    last_name=None,
+    age=None,
+    country=None,
+):
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO users (email, password_hash, auth_provider, google_sub) VALUES (?, ?, ?, ?)",
-        (email, password_hash, auth_provider, google_sub),
+        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country),
     )
     conn.commit()
     user_id = cur.lastrowid
@@ -74,6 +129,31 @@ def get_user_by_google_sub(google_sub):
     return dict(row) if row else None
 
 
+def list_users():
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, created_at "
+        "FROM users ORDER BY created_at ASC"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def set_admin(user_id, is_admin: bool):
+    conn = _connect()
+    conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (1 if is_admin else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_user(user_id):
+    conn = _connect()
+    conn.execute("DELETE FROM entries WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+
 def add_entry(user_id, entry_date, sex, values: dict):
     conn = _connect()
     cols = ["user_id", "entry_date", "sex"] + list(values.keys())
@@ -93,3 +173,92 @@ def get_entries_for_user(user_id):
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def get_setting(key, default=None):
+    conn = _connect()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_thresholds():
+    conn = _connect()
+    rows = conn.execute("SELECT key, value FROM settings WHERE key LIKE 'threshold.%'").fetchall()
+    conn.close()
+    overrides = {row["key"][len("threshold."):]: float(row["value"]) for row in rows}
+    return {**DEFAULT_THRESHOLDS, **overrides}
+
+
+def set_threshold(key, value):
+    set_setting(f"threshold.{key}", str(value))
+
+
+def get_announcement():
+    return get_setting(ANNOUNCEMENT_KEY, "")
+
+
+def set_announcement(text):
+    set_setting(ANNOUNCEMENT_KEY, text)
+
+
+def create_issue(user_email, description, chat_context=""):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO issues (user_email, description, chat_context) VALUES (?, ?, ?)",
+        (user_email, description, chat_context),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_issues():
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM issues ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def set_issue_status(issue_id, status):
+    conn = _connect()
+    conn.execute("UPDATE issues SET status = ? WHERE id = ?", (status, issue_id))
+    conn.commit()
+    conn.close()
+
+
+def set_remember_token(user_id, token, expires_at_iso):
+    conn = _connect()
+    conn.execute(
+        "UPDATE users SET remember_token = ?, remember_token_expires = ? WHERE id = ?",
+        (token, expires_at_iso, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_by_remember_token(token):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM users WHERE remember_token = ?", (token,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def clear_remember_token(user_id):
+    conn = _connect()
+    conn.execute(
+        "UPDATE users SET remember_token = NULL, remember_token_expires = NULL WHERE id = ?",
+        (user_id,),
+    )
+    conn.commit()
+    conn.close()
