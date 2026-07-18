@@ -65,7 +65,11 @@ def _connect():
     if USE_REMOTE_DB:
         import libsql_client
 
-        return _RemoteConn(libsql_client.create_client_sync(url=TURSO_DATABASE_URL, auth_token=TURSO_AUTH_TOKEN))
+        # Use HTTP (Hrana-over-HTTP) rather than the libsql:// WebSocket
+        # scheme: each call here is a short, one-off request/response, and
+        # the WebSocket handshake was unreliable in testing.
+        http_url = TURSO_DATABASE_URL.replace("libsql://", "https://", 1)
+        return _RemoteConn(libsql_client.create_client_sync(url=http_url, auth_token=TURSO_AUTH_TOKEN))
 
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
@@ -94,20 +98,19 @@ def init_db():
         )
         """
     )
-    for statement in [
-        "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
-        "ALTER TABLE users ADD COLUMN first_name TEXT",
-        "ALTER TABLE users ADD COLUMN last_name TEXT",
-        "ALTER TABLE users ADD COLUMN age INTEGER",
-        "ALTER TABLE users ADD COLUMN country TEXT",
-        "ALTER TABLE users ADD COLUMN remember_token TEXT",
-        "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
-    ]:
-        try:
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+    migrations = {
+        "is_admin": "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+        "first_name": "ALTER TABLE users ADD COLUMN first_name TEXT",
+        "last_name": "ALTER TABLE users ADD COLUMN last_name TEXT",
+        "age": "ALTER TABLE users ADD COLUMN age INTEGER",
+        "country": "ALTER TABLE users ADD COLUMN country TEXT",
+        "remember_token": "ALTER TABLE users ADD COLUMN remember_token TEXT",
+        "remember_token_expires": "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
+    }
+    for column, statement in migrations.items():
+        if column not in existing_columns:
             conn.execute(statement)
-        except Exception as e:
-            if "duplicate column" not in str(e).lower():
-                raise
 
     columns_sql = ", ".join(f"{c} REAL" for c in COLUMNS)
     conn.execute(
