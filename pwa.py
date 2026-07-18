@@ -38,20 +38,28 @@ INJECTED_HEAD = f"""{PWA_MARKER}
 
 
 def ensure_pwa_assets():
-    static_dir = Path(st.__file__).parent / "static"
-    if not static_dir.exists():
-        return
+    """Best-effort: some hosts (e.g. Streamlit Community Cloud) run with a
+    read-only site-packages directory, so this silently no-ops there rather
+    than crashing the app. PWA installability is a nice-to-have, not
+    required for the app to function.
+    """
+    try:
+        static_dir = Path(st.__file__).parent / "static"
+        if not static_dir.exists():
+            return
 
-    project_pwa_dir = Path(__file__).parent / "pwa"
-    for asset in PWA_ASSETS:
-        src = project_pwa_dir / asset
-        if src.exists():
-            shutil.copy(src, static_dir / asset)
+        project_pwa_dir = Path(__file__).parent / "pwa"
+        for asset in PWA_ASSETS:
+            src = project_pwa_dir / asset
+            if src.exists():
+                shutil.copy(src, static_dir / asset)
 
-    index_path = static_dir / "index.html"
-    html = index_path.read_text()
-    if PWA_MARKER in html:
-        return  # already patched (e.g. a previous run in this same process)
+        index_path = static_dir / "index.html"
+        html = index_path.read_text()
+        if PWA_MARKER in html:
+            return  # already patched (e.g. a previous run in this same process)
 
-    html = html.replace("</head>", INJECTED_HEAD + "  </head>")
-    index_path.write_text(html)
+        html = html.replace("</head>", INJECTED_HEAD + "  </head>")
+        index_path.write_text(html)
+    except OSError:
+        pass
