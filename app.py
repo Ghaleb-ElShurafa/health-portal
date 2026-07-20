@@ -30,6 +30,8 @@ if "current_service" not in st.session_state:
     st.session_state.current_service = None
 if "help_chat" not in st.session_state:
     st.session_state.help_chat = []
+if "search_answer" not in st.session_state:
+    st.session_state.search_answer = None
 
 
 def _set_remember_cookie(token):
@@ -59,6 +61,7 @@ def _log_out(user):
     st.session_state.guest_uc_entries = []
     st.session_state.view_as_user = False
     st.session_state.current_service = None
+    st.session_state.search_answer = None
     st.rerun()
 
 
@@ -230,8 +233,18 @@ def render_landing(user, as_admin_preview=False):
     )
     if st.button("Search") and query.strip():
         with st.spinner("Thinking..."):
-            answer = ai_assistant.answer_search(query.strip())
-        st.markdown(answer)
+            st.session_state.search_answer = ai_assistant.answer_search(query.strip())
+        st.rerun()
+
+    if st.session_state.search_answer:
+        with st.container(border=True):
+            ans_col, close_col = st.columns([9, 1])
+            with close_col:
+                if st.button("✕", key="close_search_answer", help="Close"):
+                    st.session_state.search_answer = None
+                    st.rerun()
+            with ans_col:
+                st.markdown(st.session_state.search_answer)
 
     st.divider()
     st.subheader("Services")
