@@ -1,15 +1,27 @@
-"""Personal Doctor service: bloodwork entry, rule-based flagging, AI summary,
-and trend charts."""
+"""Personal Doctor service: upload a bloodwork document for AI-assisted
+extraction (or enter values manually), rule-based flagging, AI summary, and
+trend charts across every bloodwork entry on file over time.
+"""
 
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+import ai_advice
 import db
 import reference_ranges as rr
 from ai_advice import DISCLAIMER, get_advice, is_configured
+
+
+def _parse_extracted_date(value):
+    if not value:
+        return date.today()
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return date.today()
 
 
 def render(user, thresholds):
@@ -28,37 +40,73 @@ def render(user, thresholds):
         "about your results, especially anything flagged below."
     )
 
-    st.markdown(
-        "Enter your bloodwork results below to get a plain-language summary, general "
-        "diet/lifestyle pointers, and a flag for anything that should be discussed with "
-        "a doctor. Leave any field blank if you don't have that result."
-    )
+    st.session_state.setdefault("bloodwork_form_version", 0)
+    st.session_state.setdefault("extracted_bloodwork", {})
+
+    st.subheader("Upload a bloodwork document")
+    st.caption("Upload a photo or PDF of a lab report — AI will read the values so you don't have to type them in. You can review and edit everything before saving.")
+    uploaded_file = st.file_uploader("Lab report (image or PDF)", type=["png", "jpg", "jpeg", "pdf"])
+    if uploaded_file is not None and st.button("Extract Values"):
+        mime_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "pdf": "application/pdf"}
+        ext = uploaded_file.name.rsplit(".", 1)[-1].lower()
+        with st.spinner("Reading document..."):
+            extracted, error = ai_advice.extract_from_document(uploaded_file.getvalue(), mime_map.get(ext, "image/png"))
+        if error:
+            st.warning(error)
+        if extracted:
+            st.session_state.extracted_bloodwork = extracted
+            st.session_state.bloodwork_form_version += 1
+            st.success("Values extracted — review and edit below before saving.")
+            st.rerun()
+
+    st.divider()
+    st.subheader("Review & Save")
+    st.caption("Fields are pre-filled from your uploaded document when available. Adjust anything before saving, or fill in manually if you skipped the upload.")
+
+    extracted = st.session_state.extracted_bloodwork
+    version = st.session_state.bloodwork_form_version
 
     with st.form("entry_form"):
         col1, col2 = st.columns(2)
         with col1:
-            entry_date = st.date_input("Test date", value=date.today())
+            entry_date = st.date_input(
+                "Test date", value=_parse_extracted_date(extracted.get("test_date")), key=f"date_v{version}"
+            )
         with col2:
-            sex = st.selectbox("Sex", ["Female", "Male"])
+            sex_options = ["Female", "Male"]
+            default_sex = sex_options.index(extracted["sex"]) if extracted.get("sex") in sex_options else 0
+            sex = st.selectbox("Sex", sex_options, index=default_sex, key=f"sex_v{version}")
 
         st.subheader("Lipid panel")
         c1, c2, c3 = st.columns(3)
-        total_cholesterol = c1.number_input("Total Cholesterol (mg/dL)", min_value=0.0, value=None, step=1.0)
-        ldl = c2.number_input("LDL (mg/dL)", min_value=0.0, value=None, step=1.0)
-        hdl = c3.number_input("HDL (mg/dL)", min_value=0.0, value=None, step=1.0)
-        triglycerides = st.number_input("Triglycerides (mg/dL)", min_value=0.0, value=None, step=1.0)
+        total_cholesterol = c1.number_input(
+            "Total Cholesterol (mg/dL)", min_value=0.0, value=extracted.get("total_cholesterol"), step=1.0, key=f"tc_v{version}"
+        )
+        ldl = c2.number_input("LDL (mg/dL)", min_value=0.0, value=extracted.get("ldl"), step=1.0, key=f"ldl_v{version}")
+        hdl = c3.number_input("HDL (mg/dL)", min_value=0.0, value=extracted.get("hdl"), step=1.0, key=f"hdl_v{version}")
+        triglycerides = st.number_input(
+            "Triglycerides (mg/dL)", min_value=0.0, value=extracted.get("triglycerides"), step=1.0, key=f"tg_v{version}"
+        )
 
         st.subheader("Glucose")
         c4, c5 = st.columns(2)
-        glucose_fasting = c4.number_input("Fasting Glucose (mg/dL)", min_value=0.0, value=None, step=1.0)
-        hba1c = c5.number_input("HbA1c (%)", min_value=0.0, value=None, step=0.1, format="%.1f")
+        glucose_fasting = c4.number_input(
+            "Fasting Glucose (mg/dL)", min_value=0.0, value=extracted.get("glucose_fasting"), step=1.0, key=f"gf_v{version}"
+        )
+        hba1c = c5.number_input(
+            "HbA1c (%)", min_value=0.0, value=extracted.get("hba1c"), step=0.1, format="%.1f", key=f"hba1c_v{version}"
+        )
 
         st.subheader("Blood pressure")
         c6, c7 = st.columns(2)
-        systolic = c6.number_input("Systolic (mmHg)", min_value=0.0, value=None, step=1.0)
-        diastolic = c7.number_input("Diastolic (mmHg)", min_value=0.0, value=None, step=1.0)
+        systolic = c6.number_input(
+            "Systolic (mmHg)", min_value=0.0, value=extracted.get("systolic"), step=1.0, key=f"sys_v{version}"
+        )
+        diastolic = c7.number_input(
+            "Diastolic (mmHg)", min_value=0.0, value=extracted.get("diastolic"), step=1.0, key=f"dia_v{version}"
+        )
 
-        submitted = st.form_submit_button("Analyze")
+        submitted = st.form_submit_button("Save & Analyze")
 
     if submitted:
         raw_values = {
@@ -82,6 +130,9 @@ def render(user, thresholds):
                 )
             else:
                 db.add_entry(user["id"], entry_date.isoformat(), sex, provided)
+
+            st.session_state.extracted_bloodwork = {}
+            st.session_state.bloodwork_form_version += 1
 
             results = []
             for key, (name, unit, flag_fn, needs_sex) in rr.METRICS.items():
@@ -127,7 +178,7 @@ def render(user, thresholds):
         entries = db.get_entries_for_user(user["id"])
 
     if len(entries) < 1:
-        st.caption("No entries yet — submit the form above to start tracking trends.")
+        st.caption("No entries yet — upload a document or fill in the form above to start tracking trends.")
     else:
         history_df = pd.DataFrame(entries)
         metric_options = [c for c in db.COLUMNS if c in history_df.columns and history_df[c].notna().sum() >= 1]

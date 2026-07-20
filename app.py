@@ -5,20 +5,25 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import ai_assistant
+import ai_daily
 import auth
 import db
 import reference_ranges as rr
+import styles
 from pwa import ensure_pwa_assets
-from services import personal_doctor, wellness_coach
+from services import personal_doctor, uc_tracker, wellness_coach
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
+styles.inject()
 db.init_db()
 
 if "auth_user" not in st.session_state:
     st.session_state.auth_user = None
 if "guest_entries" not in st.session_state:
     st.session_state.guest_entries = []
+if "guest_uc_entries" not in st.session_state:
+    st.session_state.guest_uc_entries = []
 if "view_as_user" not in st.session_state:
     st.session_state.view_as_user = False
 if "current_service" not in st.session_state:
@@ -51,6 +56,7 @@ def _log_out(user):
     _clear_remember_cookie()
     st.session_state.auth_user = None
     st.session_state.guest_entries = []
+    st.session_state.guest_uc_entries = []
     st.session_state.view_as_user = False
     st.session_state.current_service = None
     st.rerun()
@@ -116,10 +122,15 @@ def render_auth_gate():
             email = st.text_input("Email", key="signup_email")
             password = st.text_input("Password", type="password", key="signup_password")
             st.caption("Password needs at least 8 characters, including one number and one uppercase letter.")
+            diagnosis = st.text_input(
+                "Diagnosis (optional)",
+                key="signup_diagnosis",
+                placeholder="e.g. Ulcerative Colitis — leave blank if none",
+            )
             keep_logged_in = st.checkbox("Keep me logged in", key="signup_keep")
             if st.form_submit_button("Sign Up"):
                 user, error = auth.sign_up(
-                    email, password, first_name, last_name, int(age) if age is not None else None, country
+                    email, password, first_name, last_name, int(age) if age is not None else None, country, diagnosis
                 )
                 if user:
                     if keep_logged_in:
@@ -171,10 +182,17 @@ def render_sidebar_help(user):
 
 
 def render_landing(user, as_admin_preview=False):
+    display_name = user.get("first_name") or ("Guest" if user["auth_provider"] == "guest" else user["email"])
+
     top_left, top_right = st.columns([4, 1])
     with top_left:
-        st.title("🏥 Health Services Portal")
-        st.caption(f"Signed in as **{user['email']}**" + (" (guest session)" if user["auth_provider"] == "guest" else ""))
+        st.title(f"🏥 Welcome back, {display_name}!")
+        caption = f"Signed in as **{user['email']}**"
+        if user["auth_provider"] == "guest":
+            caption += " (guest session)"
+        elif user.get("diagnosis"):
+            caption += f" · Diagnosis: **{user['diagnosis']}**"
+        st.caption(caption)
     with top_right:
         if as_admin_preview:
             if st.button("Back to Admin"):
@@ -183,9 +201,25 @@ def render_landing(user, as_admin_preview=False):
         elif st.button("Log out"):
             _log_out(user)
 
+    if user["auth_provider"] != "guest":
+        with st.expander("Update my diagnosis"):
+            new_diagnosis = st.text_input(
+                "Diagnosis", value=user.get("diagnosis") or "", key="diagnosis_edit",
+                placeholder="e.g. Ulcerative Colitis — leave blank if none",
+            )
+            if st.button("Save diagnosis"):
+                db.set_diagnosis(user["id"], new_diagnosis.strip() or None)
+                st.session_state.auth_user["diagnosis"] = new_diagnosis.strip() or None
+                st.success("Diagnosis updated.")
+                st.rerun()
+
     announcement = db.get_announcement()
     if announcement:
         st.info(announcement)
+
+    with st.spinner("Loading your daily statement..."):
+        statement = ai_daily.get_statement(user)
+    st.markdown(f'<div class="sotd-banner">💡 <b>Statement of the day:</b> {statement}</div>', unsafe_allow_html=True)
 
     st.subheader("🔍 Ask anything")
     query = st.text_input(
@@ -201,22 +235,29 @@ def render_landing(user, as_admin_preview=False):
 
     st.divider()
     st.subheader("Services")
-    cols = st.columns(3)
+    cols = st.columns(4)
     with cols[0]:
         with st.container(border=True):
             st.markdown("### 🩺 Personal Doctor")
-            st.caption("Track bloodwork results, get AI-powered insights, and see trends over time.")
+            st.caption("Upload bloodwork documents, get AI-powered insights, and see trends over time.")
             if st.button("Open", key="open_personal_doctor"):
                 st.session_state.current_service = "personal_doctor"
                 st.rerun()
     with cols[1]:
         with st.container(border=True):
             st.markdown("### 🥗 Wellness Coach")
-            st.caption("Get a personalized diet and exercise plan, informed by your bloodwork.")
+            st.caption("Get a personalized diet and exercise plan, tailored to your diagnosis and bloodwork.")
             if st.button("Open", key="open_wellness_coach"):
                 st.session_state.current_service = "wellness_coach"
                 st.rerun()
     with cols[2]:
+        with st.container(border=True):
+            st.markdown("### 🔥 UC Tracker")
+            st.caption("Log flares and food to spot patterns for ulcerative colitis.")
+            if st.button("Open", key="open_uc_tracker"):
+                st.session_state.current_service = "uc_tracker"
+                st.rerun()
+    with cols[3]:
         with st.container(border=True):
             st.markdown("### ➕ More services")
             st.caption("New services will appear here as they're added.")
@@ -341,5 +382,7 @@ else:
         personal_doctor.render(current_user, db.get_thresholds())
     elif st.session_state.current_service == "wellness_coach":
         wellness_coach.render(current_user, db.get_thresholds())
+    elif st.session_state.current_service == "uc_tracker":
+        uc_tracker.render(current_user)
     else:
         render_landing(current_user, as_admin_preview=current_user.get("is_admin", False))

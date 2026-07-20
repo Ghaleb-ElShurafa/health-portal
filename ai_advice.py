@@ -14,9 +14,50 @@ DISCLAIMER = (
     "Always consult a healthcare provider about your results."
 )
 
+BLOODWORK_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "total_cholesterol": {"type": "NUMBER", "nullable": True},
+        "ldl": {"type": "NUMBER", "nullable": True},
+        "hdl": {"type": "NUMBER", "nullable": True},
+        "triglycerides": {"type": "NUMBER", "nullable": True},
+        "glucose_fasting": {"type": "NUMBER", "nullable": True},
+        "hba1c": {"type": "NUMBER", "nullable": True},
+        "systolic": {"type": "NUMBER", "nullable": True},
+        "diastolic": {"type": "NUMBER", "nullable": True},
+        "test_date": {"type": "STRING", "nullable": True},
+        "sex": {"type": "STRING", "nullable": True},
+    },
+}
+
+EXTRACTION_PROMPT = (
+    "This is a bloodwork/lab report document. Extract these values if present: "
+    "total cholesterol, LDL, HDL, triglycerides (all mg/dL), fasting glucose (mg/dL), "
+    "HbA1c (%), blood pressure systolic/diastolic (mmHg), the test date (as YYYY-MM-DD "
+    "if determinable, otherwise as written), and patient sex if shown (\"Male\" or "
+    "\"Female\"). Use null for anything not found or not legible. Do not guess or "
+    "estimate a value that isn't actually in the document."
+)
+
 
 def is_configured():
     return gemini_client.is_configured()
+
+
+def extract_from_document(file_bytes, mime_type):
+    """Returns (values_dict_or_None, error_message_or_None)."""
+    if not is_configured():
+        return None, "AI extraction unavailable: no GEMINI_API_KEY configured. Enter values manually below."
+
+    try:
+        result = gemini_client.extract_from_document(
+            EXTRACTION_PROMPT, file_bytes, mime_type, BLOODWORK_SCHEMA, max_tokens=800
+        )
+        return result, None
+    except gemini_client.GeminiUnavailableError:
+        return None, "AI extraction is temporarily unavailable (the service is busy) — try again, or enter values manually."
+    except Exception:
+        return None, "Couldn't read that document — try a clearer image/PDF, or enter values manually below."
 
 
 def _build_prompt(results, sex):
@@ -52,8 +93,14 @@ def get_advice(results, sex):
         )
 
     prompt = _build_prompt(results, sex)
-    return gemini_client.generate(
-        system_prompt=None,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=500,
-    )
+    try:
+        return gemini_client.generate(
+            system_prompt=None,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+        )
+    except gemini_client.GeminiUnavailableError:
+        return (
+            "AI summary is temporarily unavailable (the AI service is busy) — "
+            "your results and flags above are still accurate. Try again in a moment."
+        )

@@ -8,6 +8,7 @@ import streamlit as st
 import ai_wellness
 import db
 import reference_ranges as rr
+from services import uc_tracker
 
 
 def _latest_entry(user):
@@ -80,6 +81,13 @@ def render(user, thresholds):
             "answers below only. Log bloodwork in Personal Doctor for a more personalized plan."
         )
 
+    uc_summary = uc_tracker.get_recent_summary(user)
+    if uc_summary:
+        st.info(f"Also factoring in your UC Tracker data: {uc_summary}")
+
+    if user.get("diagnosis"):
+        st.caption(f"Personalizing for diagnosis: **{user['diagnosis']}**")
+
     st.subheader("Tell us about your goals")
     with st.form("wellness_questionnaire"):
         goal = st.selectbox(
@@ -105,7 +113,7 @@ def render(user, thresholds):
             "Dietary restrictions": ", ".join(dietary_restrictions),
             "Additional notes": notes,
         }
-        profile = {"age": user.get("age"), "country": user.get("country")}
+        profile = {"age": user.get("age"), "country": user.get("country"), "diagnosis": user.get("diagnosis")}
 
         st.subheader("Your plan")
         if needs_clearance:
@@ -118,6 +126,6 @@ def render(user, thresholds):
             )
         else:
             with st.spinner("Generating your plan..."):
-                plan = ai_wellness.get_plan(profile, bloodwork_summary, needs_clearance, questionnaire)
+                plan = ai_wellness.get_plan(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary)
             st.markdown(plan)
         st.caption(ai_wellness.DISCLAIMER)

@@ -110,6 +110,7 @@ def init_db():
             country TEXT,
             remember_token TEXT,
             remember_token_expires TEXT,
+            diagnosis TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -123,6 +124,7 @@ def init_db():
         "country": "ALTER TABLE users ADD COLUMN country TEXT",
         "remember_token": "ALTER TABLE users ADD COLUMN remember_token TEXT",
         "remember_token_expires": "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
+        "diagnosis": "ALTER TABLE users ADD COLUMN diagnosis TEXT",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
@@ -160,6 +162,30 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS uc_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            entry_date TEXT NOT NULL,
+            flared INTEGER NOT NULL DEFAULT 0,
+            severity TEXT,
+            foods TEXT NOT NULL,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS daily_statements (
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            statement_date TEXT NOT NULL,
+            statement_text TEXT NOT NULL,
+            PRIMARY KEY (user_id, statement_date)
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -173,17 +199,25 @@ def create_user(
     last_name=None,
     age=None,
     country=None,
+    diagnosis=None,
 ):
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country),
+        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis),
     )
     conn.commit()
     user_id = cur.lastrowid
     conn.close()
     return user_id
+
+
+def set_diagnosis(user_id, diagnosis):
+    conn = _connect()
+    conn.execute("UPDATE users SET diagnosis = ? WHERE id = ?", (diagnosis, user_id))
+    conn.commit()
+    conn.close()
 
 
 def get_user_by_email(email):
@@ -203,7 +237,7 @@ def get_user_by_google_sub(google_sub):
 def list_users():
     conn = _connect()
     rows = conn.execute(
-        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, created_at "
+        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, diagnosis, created_at "
         "FROM users ORDER BY created_at ASC"
     ).fetchall()
     conn.close()
@@ -330,6 +364,47 @@ def clear_remember_token(user_id):
     conn.execute(
         "UPDATE users SET remember_token = NULL, remember_token_expires = NULL WHERE id = ?",
         (user_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_uc_entry(user_id, entry_date, flared, severity, foods, notes=""):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO uc_entries (user_id, entry_date, flared, severity, foods, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, entry_date, 1 if flared else 0, severity, foods, notes),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_uc_entries_for_user(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM uc_entries WHERE user_id = ? ORDER BY entry_date ASC", (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_daily_statement(user_id, statement_date):
+    conn = _connect()
+    row = conn.execute(
+        "SELECT statement_text FROM daily_statements WHERE user_id = ? AND statement_date = ?",
+        (user_id, statement_date),
+    ).fetchone()
+    conn.close()
+    return row["statement_text"] if row else None
+
+
+def set_daily_statement(user_id, statement_date, statement_text):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO daily_statements (user_id, statement_date, statement_text) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, statement_date) DO UPDATE SET statement_text = excluded.statement_text",
+        (user_id, statement_date, statement_text),
     )
     conn.commit()
     conn.close()

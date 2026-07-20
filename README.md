@@ -1,10 +1,12 @@
 # Health Services Portal
 
 A multi-service health app built with Streamlit. Users sign up, land on a
-services hub, and open individual tools — currently **Personal Doctor**
-(bloodwork tracking + AI insights) and **Wellness Coach** (diet/exercise
-plans personalized from that bloodwork). More services can be added as new
-cards on the landing page.
+personalized dashboard, and open individual tools — currently **Personal
+Doctor** (upload bloodwork documents, AI-extracted and tracked over time),
+**Wellness Coach** (diet/exercise plans tailored to diagnosis + bloodwork +
+UC Tracker data), and **UC Tracker** (log flares and food to spot ulcerative
+colitis trigger patterns). More services can be added as new cards on the
+landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -13,24 +15,40 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 
 ## Features
 
-- **Accounts**: email/password (with name, age, country of residence),
-  Google sign-in, or a guest mode that needs no account. "Keep me logged in"
-  persists a session via a browser cookie for 30 days.
-- **Personal Doctor**: log a lipid panel, glucose/HbA1c, and blood pressure;
-  get rule-based flags against standard adult reference ranges (NCEP ATP III
-  cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood pressure
-  categories), an AI-generated plain-language summary, and trend charts.
-- **Wellness Coach**: a diet + exercise plan from the Gemini API, informed by
-  your latest Personal Doctor bloodwork when available (falls back to a
-  short questionnaire otherwise). Recommends medical clearance before
-  exercise whenever bloodwork has a "consult a doctor" flag.
-- **AI search bar**: ask anything on the landing page (Gemini API).
-- **Help & Support sidebar**: an AI chat for navigation/technical questions,
-  plus a "report a technical issue" form that logs to the admin dashboard.
+- **Accounts**: email/password (with name, age, country of residence, and an
+  optional diagnosis), Google sign-in, or a guest mode that needs no account.
+  "Keep me logged in" persists a session via a browser cookie for 30 days.
+  Diagnosis can be set at signup or updated anytime from the landing page.
+- **Personal Doctor**: upload a photo or PDF of a lab report — Gemini reads
+  the document directly (no OCR step) and pre-fills a lipid panel,
+  glucose/HbA1c, and blood pressure form for you to review and edit before
+  saving. Every save is flagged against standard adult reference ranges
+  (NCEP ATP III cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood
+  pressure categories), gets an AI-generated plain-language summary, and adds
+  to trend charts across every bloodwork entry on file over time.
+- **Wellness Coach**: a diet + exercise plan personalized from your latest
+  Personal Doctor bloodwork, your diagnosis (if set), and your UC Tracker
+  history (if any) — falls back to a short questionnaire if none of that
+  exists yet. Recommends medical clearance before exercise whenever
+  bloodwork has a "consult a doctor" flag.
+- **UC Tracker**: log each day's flare status (yes/no + severity) and the
+  foods you ate. The app computes a food-vs-flare-day correlation table
+  (rule-based, not AI) and an AI narrative highlighting likely trigger foods
+  — correlation, not diagnosis, always framed as something to discuss with
+  a gastroenterologist.
+- **Statement of the day**: a personalized one-line tip on the landing page,
+  generated from whatever's known about you (diagnosis, latest bloodwork,
+  recent UC Tracker pattern) and cached once per day.
+- **AI search bar**: ask anything on the landing page.
+- **Help & Support sidebar**: an AI chat that can help with genuinely
+  anything — site navigation, technical issues, or general questions — plus
+  a "report a technical issue" form that logs to the admin dashboard.
 - **Admin dashboard** (for admin accounts): manage users (grant/revoke admin,
-  delete), edit the clinical reference ranges used by Personal Doctor and
-  Wellness Coach, post a site-wide announcement, and review reported issues.
-  Admins can click "View as User" to preview the normal experience.
+  delete), edit the clinical reference ranges used across services, post a
+  site-wide announcement, and review reported issues. Admins can click "View
+  as User" to preview the normal experience. The Streamlit toolbar (Deploy
+  button, hamburger menu) is hidden from everyone — admin controls live in
+  this in-app dashboard instead, not Streamlit's own chrome.
 
 ## Setup
 
@@ -45,24 +63,35 @@ Get a free Gemini API key at [aistudio.google.com](https://aistudio.google.com)
 
 Without an API key configured, the app still works — it shows rule-based
 results and flags, just without AI-generated text (summaries, plans, search,
-help chat).
+help chat, document extraction, statement of the day).
 
 ### AI features (Gemini)
 
-AI text (bloodwork summaries, Wellness Coach plans, the search bar, and the
-help chat) runs on Google's [Gemini API](https://aistudio.google.com), using
-Gemini's free tier — no credit card needed, ~1,500 requests/day. The client
-(`gemini_client.py`) talks to Gemini's REST API directly via `requests`
-rather than Google's official SDK, since that SDK depends on `google-auth` →
-`cryptography`, which needs a Rust toolchain not available in this dev
-environment. Gemini API keys are simple bearer keys (not OAuth), so a plain
-HTTP call works fine without any of that.
+All AI text and document extraction runs on Google's
+[Gemini API](https://aistudio.google.com), using the free tier — no credit
+card needed. The client (`gemini_client.py`) talks to Gemini's REST API
+directly via `requests` rather than Google's official SDK, since that SDK
+depends on `google-auth` → `cryptography`, which needs a Rust toolchain not
+available in this dev environment. Gemini API keys are simple bearer keys
+(not OAuth), so a plain HTTP call works fine without any of that. It also
+retries transient failures (rate limits, 5xx errors) with backoff, and every
+AI-calling module falls back to a friendly "busy, try again" message instead
+of crashing if Gemini is unavailable.
+
+Bloodwork document extraction uses Gemini's multimodal input (the image/PDF
+is sent directly, no separate OCR step) with structured JSON output
+(`responseSchema`) so the extracted values map directly onto the app's
+existing fields.
+
+Currently pinned to `gemini-flash-lite-latest` in `gemini_client.py` — if
+Google's `-latest` aliases shift or a specific model becomes unavailable,
+that's the one line to change.
 
 ### Accounts
 
 - **Email/password**: sign up directly in the app with first/last name, age,
-  country, email, and a password (8+ characters, one number, one uppercase
-  letter).
+  country, an optional diagnosis, email, and a password (8+ characters, one
+  number, one uppercase letter).
 - **Guest**: try the app with no account — data is kept only in that browser
   session and is gone once the tab is closed.
 - **Google sign-in** (optional): requires your own Google OAuth credentials.
@@ -131,6 +160,10 @@ changes needed) instead:
 If those two variables aren't set, the app automatically falls back to the
 local SQLite file — nothing else to configure either way.
 
+`db.py` connects over HTTP (not the `libsql://` WebSocket scheme) since each
+call here is a short one-off request and the WebSocket handshake was
+unreliable in testing.
+
 ## Installing as an app (PWA)
 
 Once deployed to a public HTTPS URL (PWAs require a secure context — plain
@@ -144,31 +177,40 @@ separate to keep in sync.
 ## Project structure
 
 ```
-app.py                    Portal shell: auth gate, landing page, sidebar
-                           help chat, admin dashboard, routing between services
-auth.py                    password hashing/validation, Google OAuth flow,
-                            "keep me logged in" tokens
-db.py                      storage: users, entries, settings, issues —
-                            local SQLite by default, or Turso if configured
-pwa.py                      patches Streamlit's static files to make the
-                            app installable (manifest, service worker)
-pwa/                        PWA manifest, service worker, and icons
-reference_ranges.py        reference ranges + flagging rules (admin-editable)
-gemini_client.py            minimal Gemini REST client (no official SDK)
-ai_advice.py                 Personal Doctor bloodwork summaries
-ai_wellness.py                Wellness Coach diet/exercise plans
-ai_assistant.py               site search bar + help chat
-services/personal_doctor.py  Personal Doctor service UI
-services/wellness_coach.py   Wellness Coach service UI
+app.py                        Portal shell: auth gate, landing page, sidebar
+                               help chat, admin dashboard, routing between services
+auth.py                        password hashing/validation, Google OAuth flow,
+                                "keep me logged in" tokens, diagnosis
+db.py                          storage: users, entries, UC entries, daily
+                                statements, settings, issues — local SQLite
+                                by default, or Turso if configured
+styles.py                      custom CSS (gradient background, card/button
+                                styling) injected on every page
+pwa.py                          patches Streamlit's static files to make the
+                                app installable (manifest, service worker)
+pwa/                            PWA manifest, service worker, and icons
+reference_ranges.py            reference ranges + flagging rules (admin-editable)
+gemini_client.py                Gemini REST client: text generation, multimodal
+                                 document extraction, retry/backoff
+ai_advice.py                     Personal Doctor bloodwork summaries + document extraction
+ai_wellness.py                    Wellness Coach diet/exercise plans
+ai_uc.py                          UC Tracker pattern narrative
+ai_daily.py                       Statement of the day
+ai_assistant.py                   site search bar + help chat
+services/personal_doctor.py      Personal Doctor service UI
+services/wellness_coach.py       Wellness Coach service UI
+services/uc_tracker.py           UC Tracker service UI
+.streamlit/config.toml           hides the Streamlit toolbar and raw error
+                                  tracebacks from all users
 ```
 
 ## Scope note
 
 This is a working prototype demonstrating a full multi-service pipeline
 (auth → service routing → rule-based analysis → AI explanation → trend
-visualization) using data you enter yourself. It intentionally does **not**
-implement file uploads or storage of real patient records — turning this
-into something a healthcare company could deploy with real patient data
-would require HIPAA/PIPEDA-compliant infrastructure (encryption at rest,
-access controls, audit logging, BAAs with any third-party APIs used) that's
-out of scope here.
+visualization) using data you enter or upload yourself. Uploaded bloodwork
+documents are read by Gemini for extraction and are not stored — only the
+extracted values are kept. Turning this into something a healthcare company
+could deploy with real patient data would require HIPAA/PIPEDA-compliant
+infrastructure (encryption at rest, access controls, audit logging, BAAs
+with any third-party APIs used) that's out of scope here.
