@@ -37,15 +37,34 @@ INJECTED_HEAD = f"""{PWA_MARKER}
 """
 
 
+_already_ensured = False
+
+
 def ensure_pwa_assets():
     """Best-effort: some hosts (e.g. Streamlit Community Cloud) run with a
     read-only site-packages directory, so this silently no-ops there rather
     than crashing the app. PWA installability is a nice-to-have, not
     required for the app to function.
+
+    app.py calls this unconditionally on every module load, which happens on
+    every single Streamlit rerun (every widget interaction) — so this checks
+    the on-disk marker (and a module-level flag, to skip even that disk read
+    within this process) before touching anything, rather than re-copying
+    four files and rewriting index.html on every click.
     """
+    global _already_ensured
+    if _already_ensured:
+        return
+
     try:
         static_dir = Path(st.__file__).parent / "static"
         if not static_dir.exists():
+            return
+
+        index_path = static_dir / "index.html"
+        html = index_path.read_text()
+        if PWA_MARKER in html:
+            _already_ensured = True
             return
 
         project_pwa_dir = Path(__file__).parent / "pwa"
@@ -54,12 +73,8 @@ def ensure_pwa_assets():
             if src.exists():
                 shutil.copy(src, static_dir / asset)
 
-        index_path = static_dir / "index.html"
-        html = index_path.read_text()
-        if PWA_MARKER in html:
-            return  # already patched (e.g. a previous run in this same process)
-
         html = html.replace("</head>", INJECTED_HEAD + "  </head>")
         index_path.write_text(html)
+        _already_ensured = True
     except OSError:
         pass

@@ -5,7 +5,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import ai_assistant
-import ai_daily
 import auth
 import db
 import reference_ranges as rr
@@ -32,6 +31,16 @@ if "help_chat" not in st.session_state:
     st.session_state.help_chat = []
 if "search_answer" not in st.session_state:
     st.session_state.search_answer = None
+
+
+@st.cache_data(ttl=60)
+def _cached_thresholds():
+    return db.get_thresholds()
+
+
+@st.cache_data(ttl=60)
+def _cached_announcement():
+    return db.get_announcement()
 
 
 def _set_remember_cookie(token):
@@ -206,12 +215,12 @@ def render_landing(user, as_admin_preview=False):
     top_left, top_right = st.columns([4, 1])
     with top_left:
         st.title(f"🏥 Welcome back, {display_name}!")
-        caption = f"Signed in as **{user['email']}**"
+        subtitle = f"Signed in as **{user['email']}**"
         if user["auth_provider"] == "guest":
-            caption += " (guest session)"
+            subtitle += " (guest session)"
         elif user.get("diagnosis"):
-            caption += f" · Diagnosis: **{user['diagnosis']}**"
-        st.caption(caption)
+            subtitle += f" · Diagnosis: **{user['diagnosis']}**"
+        st.markdown(f'<p class="hero-subtitle">{subtitle}</p>', unsafe_allow_html=True)
     with top_right:
         if as_admin_preview:
             if st.button("Back to Admin"):
@@ -232,13 +241,9 @@ def render_landing(user, as_admin_preview=False):
                 st.success("Diagnosis updated.")
                 st.rerun()
 
-    announcement = db.get_announcement()
+    announcement = _cached_announcement()
     if announcement:
         st.info(announcement)
-
-    with st.spinner("Loading your daily statement..."):
-        statement = ai_daily.get_statement(user)
-    st.markdown(f'<div class="sotd-banner">💡 <b>Statement of the day:</b> {statement}</div>', unsafe_allow_html=True)
 
     st.subheader("🔍 Ask anything")
     query = st.text_input(
@@ -267,28 +272,32 @@ def render_landing(user, as_admin_preview=False):
     cols = st.columns(4)
     with cols[0]:
         with st.container(border=True):
-            st.markdown("### 🩺 Personal Doctor")
+            st.markdown('<div class="service-icon-badge badge-teal">🩺</div>', unsafe_allow_html=True)
+            st.markdown("#### Personal Doctor")
             st.caption("Upload bloodwork documents, get AI-powered insights, and see trends over time.")
             if st.button("Open", key="open_personal_doctor"):
                 st.session_state.current_service = "personal_doctor"
                 st.rerun()
     with cols[1]:
         with st.container(border=True):
-            st.markdown("### 🥗 Wellness Coach")
+            st.markdown('<div class="service-icon-badge badge-green">🥗</div>', unsafe_allow_html=True)
+            st.markdown("#### Wellness Coach")
             st.caption("Get a personalized diet and exercise plan, tailored to your diagnosis and bloodwork.")
             if st.button("Open", key="open_wellness_coach"):
                 st.session_state.current_service = "wellness_coach"
                 st.rerun()
     with cols[2]:
         with st.container(border=True):
-            st.markdown("### 🔥 UC Tracker")
+            st.markdown('<div class="service-icon-badge badge-orange">🔥</div>', unsafe_allow_html=True)
+            st.markdown("#### UC Tracker")
             st.caption("Log flares and food to spot patterns for ulcerative colitis.")
             if st.button("Open", key="open_uc_tracker"):
                 st.session_state.current_service = "uc_tracker"
                 st.rerun()
     with cols[3]:
         with st.container(border=True):
-            st.markdown("### ➕ More services")
+            st.markdown('<div class="service-icon-badge badge-purple">➕</div>', unsafe_allow_html=True)
+            st.markdown("#### More services")
             st.caption("New services will appear here as they're added.")
 
 
@@ -343,7 +352,7 @@ def render_admin(user):
         st.caption("These thresholds control how results are flagged for every user. Changes apply immediately.")
         st.session_state.setdefault("thresholds_version", 0)
         version = st.session_state.thresholds_version
-        current = db.get_thresholds()
+        current = _cached_thresholds()
         with st.form("thresholds_form"):
             new_values = {}
             for section_title, fields in rr.THRESHOLD_GROUPS:
@@ -356,6 +365,7 @@ def render_admin(user):
                     if value != current[key]:
                         db.set_threshold(key, value)
                 st.session_state.thresholds_version += 1
+                _cached_thresholds.clear()
                 st.success("Reference ranges updated.")
                 st.rerun()
 
@@ -363,15 +373,17 @@ def render_admin(user):
             for key, value in rr.DEFAULT_THRESHOLDS.items():
                 db.set_threshold(key, value)
             st.session_state.thresholds_version += 1
+            _cached_thresholds.clear()
             st.rerun()
 
     with tab_announcement:
         st.subheader("Site announcement")
         st.caption("Shown as a banner to every user (including guests) on the main page. Leave blank to hide it.")
-        current_announcement = db.get_announcement()
+        current_announcement = _cached_announcement()
         new_announcement = st.text_area("Announcement text", value=current_announcement, height=100)
         if st.button("Save Announcement"):
             db.set_announcement(new_announcement)
+            _cached_announcement.clear()
             st.success("Announcement saved.")
             st.rerun()
 
@@ -417,9 +429,9 @@ else:
     if current_user.get("is_admin") and not st.session_state.view_as_user:
         render_admin(current_user)
     elif st.session_state.current_service == "personal_doctor":
-        personal_doctor.render(current_user, db.get_thresholds())
+        personal_doctor.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "wellness_coach":
-        wellness_coach.render(current_user, db.get_thresholds())
+        wellness_coach.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "uc_tracker":
         uc_tracker.render(current_user)
     else:

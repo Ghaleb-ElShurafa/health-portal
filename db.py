@@ -178,16 +178,6 @@ def init_db():
     )
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS daily_statements (
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            statement_date TEXT NOT NULL,
-            statement_text TEXT NOT NULL,
-            PRIMARY KEY (user_id, statement_date)
-        )
-        """
-    )
-    conn.execute(
-        """
         CREATE TABLE IF NOT EXISTS login_activity (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT,
@@ -398,27 +388,6 @@ def get_uc_entries_for_user(user_id):
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
-
-
-def get_daily_statement(user_id, statement_date):
-    conn = _connect()
-    row = conn.execute(
-        "SELECT statement_text FROM daily_statements WHERE user_id = ? AND statement_date = ?",
-        (user_id, statement_date),
-    ).fetchone()
-    conn.close()
-    return row["statement_text"] if row else None
-
-
-def set_daily_statement(user_id, statement_date, statement_text):
-    conn = _connect()
-    conn.execute(
-        "INSERT INTO daily_statements (user_id, statement_date, statement_text) VALUES (?, ?, ?) "
-        "ON CONFLICT(user_id, statement_date) DO UPDATE SET statement_text = excluded.statement_text",
-        (user_id, statement_date, statement_text),
-    )
-    conn.commit()
-    conn.close()
 
 
 def log_activity(email, display_name, auth_provider):
