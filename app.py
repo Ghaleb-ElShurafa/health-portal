@@ -1,3 +1,4 @@
+import html
 import time
 
 import pandas as pd
@@ -215,11 +216,11 @@ def render_landing(user, as_admin_preview=False):
     top_left, top_right = st.columns([4, 1])
     with top_left:
         st.title(f"🏥 Welcome back, {display_name}!")
-        subtitle = f"Signed in as **{user['email']}**"
+        subtitle = f"Signed in as <strong>{html.escape(user['email'])}</strong>"
         if user["auth_provider"] == "guest":
             subtitle += " (guest session)"
         elif user.get("diagnosis"):
-            subtitle += f" · Diagnosis: **{user['diagnosis']}**"
+            subtitle += f" · Diagnosis: <strong>{html.escape(user['diagnosis'])}</strong>"
         st.markdown(f'<p class="hero-subtitle">{subtitle}</p>', unsafe_allow_html=True)
     with top_right:
         if as_admin_preview:
