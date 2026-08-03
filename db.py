@@ -186,6 +186,17 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS login_activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT,
+            display_name TEXT,
+            auth_provider TEXT NOT NULL,
+            login_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -408,3 +419,22 @@ def set_daily_statement(user_id, statement_date, statement_text):
     )
     conn.commit()
     conn.close()
+
+
+def log_activity(email, display_name, auth_provider):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO login_activity (email, display_name, auth_provider) VALUES (?, ?, ?)",
+        (email, display_name, auth_provider),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_activity(limit=500):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM login_activity ORDER BY login_at DESC, id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

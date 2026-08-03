@@ -16,9 +16,10 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 ## Features
 
 - **Accounts**: email/password (with name, age, country of residence, and an
-  optional diagnosis), Google sign-in, or a guest mode that needs no account.
-  "Keep me logged in" persists a session via a browser cookie for 30 days.
-  Diagnosis can be set at signup or updated anytime from the landing page.
+  optional diagnosis), Google sign-in, or a guest mode that asks for a
+  display name (no account needed otherwise). "Keep me logged in" persists a
+  session via a browser cookie for 30 days. Diagnosis can be set at signup or
+  updated anytime from the landing page.
 - **Personal Doctor**: upload a photo or PDF of a lab report — Gemini reads
   the document directly (no OCR step) and pre-fills a lipid panel,
   glucose/HbA1c, and blood pressure form for you to review and edit before
@@ -45,10 +46,12 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   a "report a technical issue" form that logs to the admin dashboard.
 - **Admin dashboard** (for admin accounts): manage users (grant/revoke admin,
   delete), edit the clinical reference ranges used across services, post a
-  site-wide announcement, and review reported issues. Admins can click "View
-  as User" to preview the normal experience. The Streamlit toolbar (Deploy
-  button, hamburger menu) is hidden from everyone — admin controls live in
-  this in-app dashboard instead, not Streamlit's own chrome.
+  site-wide announcement, review reported issues, and see a sign-in activity
+  log (every password/Google/guest login, plus auto-logins via "keep me
+  logged in", with who and when). Admins can click "View as User" to preview
+  the normal experience. The Streamlit toolbar (Deploy button, hamburger
+  menu) is hidden from everyone — admin controls live in this in-app
+  dashboard instead, not Streamlit's own chrome.
 
 ## Setup
 
@@ -83,9 +86,13 @@ is sent directly, no separate OCR step) with structured JSON output
 (`responseSchema`) so the extracted values map directly onto the app's
 existing fields.
 
-Currently pinned to `gemini-flash-lite-latest` in `gemini_client.py` — if
-Google's `-latest` aliases shift or a specific model becomes unavailable,
-that's the one line to change.
+Primary model is `gemini-flash-lite-latest`, with automatic fallback to two
+other models (`gemini_client.py`'s `MODEL_FALLBACKS` list) if the primary one
+is having its own outage — this has happened in practice (a multi-hour
+`-latest` alias outage on Google's end) and is otherwise invisible to users.
+Each model gets retried with exponential backoff on rate limits/5xx errors
+before moving to the next one; a genuinely bad request (e.g. an invalid API
+key) fails immediately instead of retrying pointlessly.
 
 ### Accounts
 

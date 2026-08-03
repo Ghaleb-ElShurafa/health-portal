@@ -72,6 +72,7 @@ if st.session_state.auth_user is None:
         remembered_user = auth.get_user_by_remember_token(remember_token)
         if remembered_user:
             st.session_state.auth_user = remembered_user
+            db.log_activity(remembered_user["email"], remembered_user.get("first_name"), "remember_token")
 
 
 def render_auth_gate():
@@ -86,6 +87,7 @@ def render_auth_gate():
             token = auth.create_remember_token(user["id"])
             _set_remember_cookie(token)
             st.session_state.auth_user = user
+            db.log_activity(user["email"], user.get("first_name"), "google")
             st.rerun()
         else:
             st.error(error)
@@ -104,6 +106,7 @@ def render_auth_gate():
                         token = auth.create_remember_token(user["id"])
                         _set_remember_cookie(token)
                     st.session_state.auth_user = user
+                    db.log_activity(user["email"], user.get("first_name"), "password")
                     st.rerun()
                 else:
                     st.error(error)
@@ -140,15 +143,28 @@ def render_auth_gate():
                         token = auth.create_remember_token(user["id"])
                         _set_remember_cookie(token)
                     st.session_state.auth_user = user
+                    db.log_activity(user["email"], user.get("first_name"), "signup")
                     st.rerun()
                 else:
                     st.error(error)
 
     with tab_guest:
         st.caption("Try the app without creating an account. Guest data is only kept for this browser session and won't be saved after you close the tab.")
+        guest_name = st.text_input("Choose a display name", key="guest_display_name", placeholder="e.g. Alex")
         if st.button("Continue as Guest"):
-            st.session_state.auth_user = {"id": None, "email": "Guest", "auth_provider": "guest", "is_admin": False}
-            st.rerun()
+            if not guest_name.strip():
+                st.error("Please enter a display name.")
+            else:
+                display_name = guest_name.strip()
+                st.session_state.auth_user = {
+                    "id": None,
+                    "email": display_name,
+                    "auth_provider": "guest",
+                    "is_admin": False,
+                    "first_name": display_name,
+                }
+                db.log_activity(display_name, display_name, "guest")
+                st.rerun()
 
 
 def render_sidebar_help(user):
@@ -288,8 +304,8 @@ def render_admin(user):
         if st.button("Log out"):
             _log_out(user)
 
-    tab_users, tab_ranges, tab_announcement, tab_issues = st.tabs(
-        ["Users", "Reference Ranges", "Announcement", "Issues"]
+    tab_users, tab_ranges, tab_announcement, tab_issues, tab_activity = st.tabs(
+        ["Users", "Reference Ranges", "Announcement", "Issues", "Activity"]
     )
 
     with tab_users:
@@ -381,6 +397,15 @@ def render_admin(user):
                         if st.button("Reopen", key=f"reopen_{issue['id']}"):
                             db.set_issue_status(issue["id"], "open")
                             st.rerun()
+
+    with tab_activity:
+        st.subheader("Sign-in activity")
+        st.caption("Every sign-in — password, Google, guest, or auto-login via 'keep me logged in' — most recent first.")
+        activity = db.list_activity()
+        if not activity:
+            st.caption("No activity logged yet.")
+        else:
+            st.dataframe(pd.DataFrame(activity), use_container_width=True)
 
 
 if st.session_state.auth_user is None:

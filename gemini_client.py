@@ -17,10 +17,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MODEL = "gemini-flash-lite-latest"
+# Tried in order — if the primary model is having its own outage (this has
+# happened: gemini-flash-latest had a multi-hour 503 "high demand" outage
+# while gemini-flash-lite-latest kept working fine), fall through to the
+# next one instead of failing outright.
+MODEL_FALLBACKS = [MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
-MAX_RETRIES = 3
+MAX_RETRIES = 4
 
 
 class GeminiUnavailableError(Exception):
@@ -48,24 +53,33 @@ def is_configured():
 
 def _post(body, timeout):
     last_error = None
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = requests.post(
-                f"{API_BASE}/models/{MODEL}:generateContent",
-                headers={"x-goog-api-key": _api_key(), "Content-Type": "application/json"},
-                json=body,
-                timeout=timeout,
-            )
-            if resp.status_code in RETRYABLE_STATUS_CODES:
-                last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
-                time.sleep(1.5 * (attempt + 1))
-                continue
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            last_error = str(e)
-            time.sleep(1.5 * (attempt + 1))
-    raise GeminiUnavailableError(f"Gemini API unavailable after {MAX_RETRIES} attempts: {last_error}")
+    for model in MODEL_FALLBACKS:
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = requests.post(
+                    f"{API_BASE}/models/{model}:generateContent",
+                    headers={"x-goog-api-key": _api_key(), "Content-Type": "application/json"},
+                    json=body,
+                    timeout=timeout,
+                )
+                if resp.status_code in RETRYABLE_STATUS_CODES:
+                    last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                    time.sleep(min(2 ** attempt, 10))
+                    continue
+                if not resp.ok:
+                    # Not retryable (bad API key, malformed request, etc.) —
+                    # retrying across every model/attempt would just waste
+                    # over a minute before failing the same way every time.
+                    raise GeminiUnavailableError(f"Gemini API error HTTP {resp.status_code}: {resp.text[:200]}")
+                return resp.json()
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)
+                time.sleep(min(2 ** attempt, 10))
+        # Every retry on this model was retryable-but-failed — try the next
+        # model in the fallback list before giving up entirely.
+    raise GeminiUnavailableError(
+        f"Gemini API unavailable after trying {len(MODEL_FALLBACKS)} model(s): {last_error}"
+    )
 
 
 def generate(system_prompt, messages, max_tokens=500):
