@@ -27,6 +27,16 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MAX_RETRIES = 4
 
+# Extra headroom added on top of the caller's requested max_tokens. Google
+# changed model behavior so `thinkingConfig: {thinkingBudget: 0}` — previously
+# used here to force the model to skip its invisible reasoning pass — is now
+# rejected outright as an invalid argument (confirmed against the live API).
+# Some models (e.g. gemini-flash-latest) still spend several hundred tokens
+# of the output budget on that reasoning pass by default with no way to turn
+# it off, so instead of fighting that, thinkingConfig is omitted entirely and
+# the request just asks for more total tokens than the visible reply needs.
+THINKING_BUFFER = 1000
+
 
 class GeminiUnavailableError(Exception):
     """Raised when Gemini is unreachable or overloaded after retries.
@@ -96,13 +106,7 @@ def generate(system_prompt, messages, max_tokens=500):
     ]
     body = {
         "contents": contents,
-        "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            # Without this, the model spends most of maxOutputTokens on an
-            # invisible internal reasoning pass and the visible reply gets
-            # cut off short.
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
+        "generationConfig": {"maxOutputTokens": max_tokens + THINKING_BUFFER},
     }
     if system_prompt:
         body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
@@ -128,8 +132,7 @@ def extract_from_document(prompt_text, file_bytes, mime_type, response_schema, m
             }
         ],
         "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            "thinkingConfig": {"thinkingBudget": 0},
+            "maxOutputTokens": max_tokens + THINKING_BUFFER,
             "responseMimeType": "application/json",
             "responseSchema": response_schema,
         },
