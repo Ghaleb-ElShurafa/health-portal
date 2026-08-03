@@ -123,38 +123,46 @@ or revoke admin for other accounts from the Users tab in the dashboard.
 
 ## Deploying to a public URL
 
-The recommended path is [Streamlit Community Cloud](https://streamlit.io/cloud) —
-free, deploys straight from this GitHub repo, and gives you a URL like
-`https://your-app-name.streamlit.app`.
+### Render (recommended)
 
-1. Sign in at [share.streamlit.io](https://share.streamlit.io) with your
-   GitHub account and authorize it to access this repo.
-2. Click "New app", pick this repo/branch, and set the main file to `app.py`.
-3. In the app's **Settings → Secrets**, paste in (this is where credentials
-   belong — never commit them):
-   ```
-   GEMINI_API_KEY = "..."
-   TURSO_DATABASE_URL = "libsql://your-db-name.turso.io"
-   TURSO_AUTH_TOKEN = "..."
+[Render](https://render.com) deploys straight from this GitHub repo on its
+free tier, gives you a URL like `https://health-portal.onrender.com`, and —
+unlike Streamlit Community Cloud — automatically restarts the app whenever
+an environment variable changes, so there's no separate manual reboot step
+after updating a secret.
 
-   [google_oauth]
-   client_id = "..."
-   client_secret = "..."
-   redirect_uri = "https://your-app-name.streamlit.app"
-   ```
-4. Deploy. Every `git push` to this repo redeploys automatically.
+1. Sign up at [render.com](https://render.com) and connect your GitHub
+   account.
+2. Click **New → Blueprint**, pick this repo. Render auto-detects
+   `render.yaml` in the repo root and proposes the `health-portal` web
+   service defined there.
+3. When prompted for the environment variables it left blank
+   (`GEMINI_API_KEY`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`), paste in
+   your own values — this is where credentials belong, never commit them.
+4. Deploy. Every `git push` to this repo redeploys automatically from then
+   on, and so does every future secret change.
 
-   **Important:** saving secrets does not reliably auto-restart the app —
-   after adding/changing secrets, manually click **"Reboot app"** (Manage
-   app panel) or the new values won't be picked up.
+Free-tier apps on Render still spin down after 15 minutes of inactivity and
+take a bit to cold-start on the next visit — same as any $0 host. A free
+uptime pinger (e.g. [UptimeRobot](https://uptimerobot.com) or
+[cron-job.org](https://cron-job.org)) hitting the URL every few minutes
+keeps it warm if that matters to you.
+
+### Streamlit Community Cloud (alternative)
+
+Also free and deploys from this same repo, at a `https://your-app.streamlit.app`
+URL — see git history for the previous setup steps. In practice this app hit
+a build that stopped picking up new pushes, which Render's independent build
+pipeline sidesteps; Streamlit Cloud also has a known quirk where secret
+changes don't reliably auto-restart the app (a manual "Reboot app" click in
+the Manage app panel is needed), unlike Render's automatic restart-on-change.
 
 ### Persistent storage (Turso)
 
 Local SQLite (the default) works great for development, but most hosting
-platforms — including Streamlit Community Cloud — don't guarantee that disk
-survives a restart or redeploy. For a public deployment, point the app at a
-free [Turso](https://turso.tech) database (SQLite-compatible, so no schema
-changes needed) instead:
+platforms don't guarantee that disk survives a restart or redeploy. For a
+public deployment, point the app at a free [Turso](https://turso.tech)
+database (SQLite-compatible, so no schema changes needed) instead:
 
 1. Sign up at [turso.tech](https://turso.tech) (free tier).
 2. Create a database: `turso db create health-portal` (via their CLI, or the
@@ -162,7 +170,7 @@ changes needed) instead:
 3. Get the URL: `turso db show health-portal --url`
 4. Create an auth token: `turso db tokens create health-portal`
 5. Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` — locally in `.env`, and
-   on Streamlit Cloud in Settings → Secrets (step 3 above).
+   in whichever host's environment variable / secrets panel you deploy to.
 
 If those two variables aren't set, the app automatically falls back to the
 local SQLite file — nothing else to configure either way.
