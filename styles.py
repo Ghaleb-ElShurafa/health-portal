@@ -8,9 +8,9 @@ CSS = """
 <style>
 .stApp {
     background:
-        radial-gradient(circle at 15% 0%, rgba(45, 212, 191, 0.14) 0%, transparent 45%),
-        radial-gradient(circle at 85% 0%, rgba(56, 130, 246, 0.12) 0%, transparent 45%),
-        radial-gradient(circle at 50% 100%, rgba(249, 115, 22, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 15% 0%, rgba(45, 212, 191, 0.20) 0%, transparent 45%),
+        radial-gradient(circle at 85% 0%, rgba(56, 130, 246, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 50% 105%, rgba(236, 72, 153, 0.12) 0%, transparent 55%),
         linear-gradient(160deg, #0b1220 0%, #0e1b33 55%, #0b1220 100%);
     background-attachment: fixed;
 }
