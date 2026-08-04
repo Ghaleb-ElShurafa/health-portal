@@ -75,6 +75,8 @@ def _log_out(user):
     st.session_state.guest_uc_entries = []
     st.session_state.guest_meal_entries = []
     st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
+    st.session_state.pop("pp_editing", None)
+    st.session_state.pp_just_saved = False
     st.session_state.view_as_user = False
     st.session_state.current_service = None
     st.session_state.search_answer = None
