@@ -4,9 +4,10 @@ A multi-service health app built with Streamlit. Users sign up, land on a
 personalized dashboard, and open individual tools — currently **Personal
 Doctor** (upload bloodwork documents, AI-extracted and tracked over time),
 **Wellness Coach** (diet/exercise plans tailored to diagnosis + bloodwork +
-UC Tracker data), and **UC Tracker** (log flares and food to spot ulcerative
-colitis trigger patterns). More services can be added as new cards on the
-landing page.
+UC Tracker data), **UC Tracker** (log flares and food to spot ulcerative
+colitis trigger patterns), and **Plate Score** (photograph a meal for an
+AI-scored calorie/nutrition breakdown, personalized to your diagnosis and
+goal). More services can be added as new cards on the landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -15,11 +16,12 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 
 ## Features
 
-- **Accounts**: email/password (with name, age, country of residence, and an
-  optional diagnosis), Google sign-in, or a guest mode that asks for a
-  display name (no account needed otherwise). "Keep me logged in" persists a
-  session via a browser cookie for 30 days. Diagnosis can be set at signup or
-  updated anytime from the landing page.
+- **Accounts**: email/password (with name, age, country of residence, an
+  optional diagnosis, and an optional dietary/fitness goal), Google sign-in,
+  or a guest mode that asks for a display name (no account needed
+  otherwise). "Keep me logged in" persists a session via a browser cookie
+  for 30 days. Diagnosis and goal can be set at signup or updated anytime
+  from the landing page.
 - **Personal Doctor**: upload a photo or PDF of a lab report — Gemini reads
   the document directly (no OCR step) and pre-fills a lipid panel,
   glucose/HbA1c, and blood pressure form for you to review and edit before
@@ -37,9 +39,14 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   (rule-based, not AI) and an AI narrative highlighting likely trigger foods
   — correlation, not diagnosis, always framed as something to discuss with
   a gastroenterologist.
-- **Statement of the day**: a personalized one-line tip on the landing page,
-  generated from whatever's known about you (diagnosis, latest bloodwork,
-  recent UC Tracker pattern) and cached once per day.
+- **Plate Score**: take a photo (camera or upload, works on phone and
+  desktop) of a meal — Gemini identifies the food, estimates calories and
+  macros, and returns a 1-10 health score with a short written assessment,
+  all in one pass. Diagnosis and goal (if set) are folded into that same
+  prompt, so a diabetic profile gets sugar/carb-aware scoring while a
+  muscle-gain goal gets protein-adequacy feedback. Each analysis auto-logs
+  to a history with a calories-over-time trend chart and today's running
+  total. Photos themselves are never stored, only the extracted values.
 - **AI search bar**: ask anything on the landing page.
 - **Help & Support sidebar**: an AI chat that can help with genuinely
   anything — site navigation, technical issues, or general questions — plus
@@ -195,10 +202,10 @@ separate to keep in sync.
 app.py                        Portal shell: auth gate, landing page, sidebar
                                help chat, admin dashboard, routing between services
 auth.py                        password hashing/validation, Google OAuth flow,
-                                "keep me logged in" tokens, diagnosis
-db.py                          storage: users, entries, UC entries, daily
-                                statements, settings, issues — local SQLite
-                                by default, or Turso if configured
+                                "keep me logged in" tokens, diagnosis, goal
+db.py                          storage: users, entries, UC entries, meal
+                                entries, settings, issues, activity log —
+                                local SQLite by default, or Turso if configured
 styles.py                      custom CSS (gradient background, card/button
                                 styling) injected on every page
 pwa.py                          patches Streamlit's static files to make the
@@ -206,15 +213,16 @@ pwa.py                          patches Streamlit's static files to make the
 pwa/                            PWA manifest, service worker, and icons
 reference_ranges.py            reference ranges + flagging rules (admin-editable)
 gemini_client.py                Gemini REST client: text generation, multimodal
-                                 document extraction, retry/backoff
+                                 document extraction, retry/backoff/fallback
 ai_advice.py                     Personal Doctor bloodwork summaries + document extraction
 ai_wellness.py                    Wellness Coach diet/exercise plans
 ai_uc.py                          UC Tracker pattern narrative
-ai_daily.py                       Statement of the day
+ai_food.py                        Plate Score meal photo analysis + scoring
 ai_assistant.py                   site search bar + help chat
 services/personal_doctor.py      Personal Doctor service UI
 services/wellness_coach.py       Wellness Coach service UI
 services/uc_tracker.py           UC Tracker service UI
+services/plate_score.py          Plate Score service UI
 .streamlit/config.toml           hides the Streamlit toolbar and raw error
                                   tracebacks from all users
 ```

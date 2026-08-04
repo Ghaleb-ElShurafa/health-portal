@@ -81,10 +81,11 @@ def _public_user(row):
         "age": row["age"],
         "country": row["country"],
         "diagnosis": row["diagnosis"],
+        "goal": row["goal"],
     }
 
 
-def sign_up(email, password, first_name, last_name, age, country, diagnosis=None):
+def sign_up(email, password, first_name, last_name, age, country, diagnosis=None, goal=None):
     import bcrypt
 
     if db.get_user_by_email(email):
@@ -108,6 +109,7 @@ def sign_up(email, password, first_name, last_name, age, country, diagnosis=None
         age=age,
         country=country.strip(),
         diagnosis=(diagnosis or "").strip() or None,
+        goal=(goal or "").strip() or None,
     )
     return _public_user(db.get_user_by_email(email)), ""
 

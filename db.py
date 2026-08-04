@@ -125,6 +125,7 @@ def init_db():
         "remember_token": "ALTER TABLE users ADD COLUMN remember_token TEXT",
         "remember_token_expires": "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
         "diagnosis": "ALTER TABLE users ADD COLUMN diagnosis TEXT",
+        "goal": "ALTER TABLE users ADD COLUMN goal TEXT",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
@@ -187,6 +188,23 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS meal_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            entry_date TEXT NOT NULL,
+            food_items TEXT NOT NULL,
+            calories REAL,
+            protein_g REAL,
+            carbs_g REAL,
+            fat_g REAL,
+            health_score REAL,
+            assessment TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -201,12 +219,13 @@ def create_user(
     age=None,
     country=None,
     diagnosis=None,
+    goal=None,
 ):
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis),
+        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis, goal) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis, goal),
     )
     conn.commit()
     user_id = cur.lastrowid
@@ -217,6 +236,13 @@ def create_user(
 def set_diagnosis(user_id, diagnosis):
     conn = _connect()
     conn.execute("UPDATE users SET diagnosis = ? WHERE id = ?", (diagnosis, user_id))
+    conn.commit()
+    conn.close()
+
+
+def set_goal(user_id, goal):
+    conn = _connect()
+    conn.execute("UPDATE users SET goal = ? WHERE id = ?", (goal, user_id))
     conn.commit()
     conn.close()
 
@@ -238,7 +264,7 @@ def get_user_by_google_sub(google_sub):
 def list_users():
     conn = _connect()
     rows = conn.execute(
-        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, diagnosis, created_at "
+        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, diagnosis, goal, created_at "
         "FROM users ORDER BY created_at ASC"
     ).fetchall()
     conn.close()
@@ -404,6 +430,26 @@ def list_activity(limit=500):
     conn = _connect()
     rows = conn.execute(
         "SELECT * FROM login_activity ORDER BY login_at DESC, id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def add_meal_entry(user_id, entry_date, food_items, calories, protein_g, carbs_g, fat_g, health_score, assessment):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO meal_entries (user_id, entry_date, food_items, calories, protein_g, carbs_g, fat_g, health_score, assessment) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, entry_date, food_items, calories, protein_g, carbs_g, fat_g, health_score, assessment),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_meal_entries_for_user(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM meal_entries WHERE user_id = ? ORDER BY entry_date ASC, id ASC", (user_id,)
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]

@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import personal_doctor, uc_tracker, wellness_coach
+from services import personal_doctor, plate_score, uc_tracker, wellness_coach
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -24,6 +24,8 @@ if "guest_entries" not in st.session_state:
     st.session_state.guest_entries = []
 if "guest_uc_entries" not in st.session_state:
     st.session_state.guest_uc_entries = []
+if "guest_meal_entries" not in st.session_state:
+    st.session_state.guest_meal_entries = []
 if "view_as_user" not in st.session_state:
     st.session_state.view_as_user = False
 if "current_service" not in st.session_state:
@@ -69,6 +71,7 @@ def _log_out(user):
     st.session_state.auth_user = None
     st.session_state.guest_entries = []
     st.session_state.guest_uc_entries = []
+    st.session_state.guest_meal_entries = []
     st.session_state.view_as_user = False
     st.session_state.current_service = None
     st.session_state.search_answer = None
@@ -143,10 +146,16 @@ def render_auth_gate():
                 key="signup_diagnosis",
                 placeholder="e.g. Ulcerative Colitis — leave blank if none",
             )
+            goal = st.text_input(
+                "Dietary / fitness goal (optional)",
+                key="signup_goal",
+                placeholder="e.g. Muscle gain, high protein — leave blank if none",
+            )
             keep_logged_in = st.checkbox("Keep me logged in", key="signup_keep")
             if st.form_submit_button("Sign Up"):
                 user, error = auth.sign_up(
-                    email, password, first_name, last_name, int(age) if age is not None else None, country, diagnosis
+                    email, password, first_name, last_name, int(age) if age is not None else None, country,
+                    diagnosis, goal,
                 )
                 if user:
                     if keep_logged_in:
@@ -242,6 +251,17 @@ def render_landing(user, as_admin_preview=False):
                 st.success("Diagnosis updated.")
                 st.rerun()
 
+        with st.expander("Update my dietary / fitness goal"):
+            new_goal = st.text_input(
+                "Goal", value=user.get("goal") or "", key="goal_edit",
+                placeholder="e.g. Muscle gain, high protein — leave blank if none",
+            )
+            if st.button("Save goal"):
+                db.set_goal(user["id"], new_goal.strip() or None)
+                st.session_state.auth_user["goal"] = new_goal.strip() or None
+                st.success("Goal updated.")
+                st.rerun()
+
     announcement = _cached_announcement()
     if announcement:
         st.info(announcement)
@@ -270,8 +290,8 @@ def render_landing(user, as_admin_preview=False):
 
     st.divider()
     st.subheader("Services")
-    cols = st.columns(4)
-    with cols[0]:
+    row1 = st.columns(3)
+    with row1[0]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-teal">🩺</div>', unsafe_allow_html=True)
             st.markdown("#### Personal Doctor")
@@ -279,7 +299,7 @@ def render_landing(user, as_admin_preview=False):
             if st.button("Open", key="open_personal_doctor"):
                 st.session_state.current_service = "personal_doctor"
                 st.rerun()
-    with cols[1]:
+    with row1[1]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-green">🥗</div>', unsafe_allow_html=True)
             st.markdown("#### Wellness Coach")
@@ -287,7 +307,7 @@ def render_landing(user, as_admin_preview=False):
             if st.button("Open", key="open_wellness_coach"):
                 st.session_state.current_service = "wellness_coach"
                 st.rerun()
-    with cols[2]:
+    with row1[2]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-orange">🔥</div>', unsafe_allow_html=True)
             st.markdown("#### UC Tracker")
@@ -295,7 +315,17 @@ def render_landing(user, as_admin_preview=False):
             if st.button("Open", key="open_uc_tracker"):
                 st.session_state.current_service = "uc_tracker"
                 st.rerun()
-    with cols[3]:
+
+    row2 = st.columns(3)
+    with row2[0]:
+        with st.container(border=True):
+            st.markdown('<div class="service-icon-badge badge-pink">🍽️</div>', unsafe_allow_html=True)
+            st.markdown("#### Plate Score")
+            st.caption("Photograph your meal for an AI-scored calorie and nutrition breakdown, personalized to your goal.")
+            if st.button("Open", key="open_plate_score"):
+                st.session_state.current_service = "plate_score"
+                st.rerun()
+    with row2[1]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-purple">➕</div>', unsafe_allow_html=True)
             st.markdown("#### More services")
@@ -435,5 +465,7 @@ else:
         wellness_coach.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "uc_tracker":
         uc_tracker.render(current_user)
+    elif st.session_state.current_service == "plate_score":
+        plate_score.render(current_user)
     else:
         render_landing(current_user, as_admin_preview=current_user.get("is_admin", False))

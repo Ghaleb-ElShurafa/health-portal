@@ -138,6 +138,22 @@ def extract_from_document(prompt_text, file_bytes, mime_type, response_schema, m
         },
     }
 
-    data = _post(body, timeout=60)
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-    return json.loads(text)
+    required_fields = response_schema.get("required", [])
+    last_error = None
+    for _ in range(3):
+        data = _post(body, timeout=60)
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        try:
+            parsed = json.loads(text)
+            missing = [f for f in required_fields if parsed.get(f) is None]
+            if missing:
+                raise ValueError(f"missing required field(s): {missing}")
+            return parsed
+        except (json.JSONDecodeError, ValueError) as e:
+            # Rare model failure mode: it occasionally gets stuck generating
+            # a degenerate numeric literal (thousands of digits) for a
+            # NUMBER field, burning the token budget before finishing the
+            # JSON (or skipping remaining fields entirely). A retry almost
+            # always comes back clean.
+            last_error = e
+    raise GeminiUnavailableError(f"Gemini returned malformed/incomplete JSON after 3 attempts: {last_error}")
