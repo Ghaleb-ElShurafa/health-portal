@@ -94,6 +94,10 @@ section[data-testid="stSidebar"] {
     background: radial-gradient(circle, rgba(236, 72, 153, 0.28), rgba(236, 72, 153, 0.06));
     border: 1px solid rgba(236, 72, 153, 0.4);
 }
+.badge-blue {
+    background: radial-gradient(circle, rgba(56, 130, 246, 0.28), rgba(56, 130, 246, 0.06));
+    border: 1px solid rgba(56, 130, 246, 0.4);
+}
 </style>
 """
 

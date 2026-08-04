@@ -13,6 +13,7 @@ import ai_advice
 import db
 import reference_ranges as rr
 from ai_advice import DISCLAIMER, get_advice, is_configured
+from services import patient_profile
 
 
 def _parse_extracted_date(value):
@@ -166,7 +167,7 @@ def render(user, thresholds):
                 )
             else:
                 with st.spinner("Generating summary..."):
-                    advice = get_advice(results, sex)
+                    advice = get_advice(results, sex, patient_profile.get_profile(user))
                 st.write(advice)
             st.caption(DISCLAIMER)
 

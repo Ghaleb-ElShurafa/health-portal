@@ -1,13 +1,15 @@
 # Health Services Portal
 
 A multi-service health app built with Streamlit. Users sign up, land on a
-personalized dashboard, and open individual tools — currently **Personal
+personalized dashboard, and open individual tools — currently **Patient
+Profile** (a general health screening — conditions, medications,
+supplements, goals — that personalizes every other service), **Personal
 Doctor** (upload bloodwork documents, AI-extracted and tracked over time),
-**Wellness Coach** (diet/exercise plans tailored to diagnosis + bloodwork +
-UC Tracker data), **UC Tracker** (log flares and food to spot ulcerative
+**Wellness Coach** (diet/exercise plans tailored to your profile + bloodwork
++ UC Tracker data), **UC Tracker** (log flares and food to spot ulcerative
 colitis trigger patterns), and **Plate Score** (photograph a meal for an
-AI-scored calorie/nutrition breakdown, personalized to your diagnosis and
-goal). More services can be added as new cards on the landing page.
+AI-scored calorie/nutrition breakdown, personalized to your profile). More
+services can be added as new cards on the landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -16,37 +18,47 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 
 ## Features
 
-- **Accounts**: email/password (with name, age, country of residence, an
-  optional diagnosis, and an optional dietary/fitness goal), Google sign-in,
-  or a guest mode that asks for a display name (no account needed
-  otherwise). "Keep me logged in" persists a session via a browser cookie
-  for 30 days. Diagnosis and goal can be set at signup or updated anytime
-  from the landing page.
+- **Accounts**: email/password (with name, age, country of residence),
+  Google sign-in, or a guest mode that asks for a display name (no account
+  needed otherwise). "Keep me logged in" persists a session via a browser
+  cookie for 30 days.
+- **Patient Profile**: a general health screening — medical conditions
+  (fuzzy-searchable multiselect, e.g. typing "ulc" surfaces both "Ulcers"
+  and "Ulcerative Colitis"), an "other condition" free-text field, current
+  medications, supplements, and goals (weight loss, muscle gain, diet
+  change, etc.) — with **None** / **Prefer not to say** available for
+  anything a user would rather skip. This is the single source of truth
+  every other AI-powered service reads from (via `patient_context.py`) to
+  personalize its output — e.g. a diabetes diagnosis makes Personal Doctor
+  and Plate Score sugar/carb-aware, a muscle-gain goal shapes Wellness
+  Coach's exercise plan and Plate Score's protein feedback, and any listed
+  medication gets factored into Personal Doctor's suggestions.
 - **Personal Doctor**: upload a photo or PDF of a lab report — Gemini reads
   the document directly (no OCR step) and pre-fills a lipid panel,
   glucose/HbA1c, and blood pressure form for you to review and edit before
   saving. Every save is flagged against standard adult reference ranges
   (NCEP ATP III cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood
-  pressure categories), gets an AI-generated plain-language summary, and adds
-  to trend charts across every bloodwork entry on file over time.
+  pressure categories), gets an AI-generated plain-language summary
+  personalized by your Patient Profile, and adds to trend charts across
+  every bloodwork entry on file over time.
 - **Wellness Coach**: a diet + exercise plan personalized from your latest
-  Personal Doctor bloodwork, your diagnosis (if set), and your UC Tracker
+  Personal Doctor bloodwork, your Patient Profile, and your UC Tracker
   history (if any) — falls back to a short questionnaire if none of that
   exists yet. Recommends medical clearance before exercise whenever
   bloodwork has a "consult a doctor" flag.
 - **UC Tracker**: log each day's flare status (yes/no + severity) and the
   foods you ate. The app computes a food-vs-flare-day correlation table
-  (rule-based, not AI) and an AI narrative highlighting likely trigger foods
-  — correlation, not diagnosis, always framed as something to discuss with
-  a gastroenterologist.
+  (rule-based, not AI) and an AI narrative highlighting likely trigger foods,
+  personalized by your Patient Profile — correlation, not diagnosis, always
+  framed as something to discuss with a gastroenterologist.
 - **Plate Score**: take a photo (camera or upload, works on phone and
   desktop) of a meal — Gemini identifies the food, estimates calories and
   macros, and returns a 1-10 health score with a short written assessment,
-  all in one pass. Diagnosis and goal (if set) are folded into that same
-  prompt, so a diabetic profile gets sugar/carb-aware scoring while a
-  muscle-gain goal gets protein-adequacy feedback. Each analysis auto-logs
-  to a history with a calories-over-time trend chart and today's running
-  total. Photos themselves are never stored, only the extracted values.
+  all in one pass. Your Patient Profile is folded into that same prompt, so
+  a diabetes diagnosis gets sugar/carb-aware scoring while a muscle-gain
+  goal gets protein-adequacy feedback. Each analysis auto-logs to a history
+  with a calories-over-time trend chart and today's running total. Photos
+  themselves are never stored, only the extracted values.
 - **AI search bar**: ask anything on the landing page.
 - **Help & Support sidebar**: an AI chat that can help with genuinely
   anything — site navigation, technical issues, or general questions — plus
@@ -202,10 +214,13 @@ separate to keep in sync.
 app.py                        Portal shell: auth gate, landing page, sidebar
                                help chat, admin dashboard, routing between services
 auth.py                        password hashing/validation, Google OAuth flow,
-                                "keep me logged in" tokens, diagnosis, goal
-db.py                          storage: users, entries, UC entries, meal
-                                entries, settings, issues, activity log —
-                                local SQLite by default, or Turso if configured
+                                "keep me logged in" tokens
+db.py                          storage: users, patient profiles, entries, UC
+                                entries, meal entries, settings, issues,
+                                activity log — local SQLite by default, or
+                                Turso if configured
+patient_context.py              formats a Patient Profile into AI-prompt text,
+                                 shared by every ai_*.py module
 styles.py                      custom CSS (gradient background, card/button
                                 styling) injected on every page
 pwa.py                          patches Streamlit's static files to make the
@@ -219,6 +234,7 @@ ai_wellness.py                    Wellness Coach diet/exercise plans
 ai_uc.py                          UC Tracker pattern narrative
 ai_food.py                        Plate Score meal photo analysis + scoring
 ai_assistant.py                   site search bar + help chat
+services/patient_profile.py     Patient Profile service UI
 services/personal_doctor.py      Personal Doctor service UI
 services/wellness_coach.py       Wellness Coach service UI
 services/uc_tracker.py           UC Tracker service UI

@@ -7,6 +7,7 @@ Turso (libSQL) database instead — same SQL, same query patterns throughout
 this file, via the small compatibility wrapper below.
 """
 
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -190,6 +191,19 @@ def init_db():
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS patient_profiles (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            conditions TEXT NOT NULL DEFAULT '[]',
+            other_condition TEXT,
+            medications TEXT,
+            supplements TEXT,
+            goals TEXT NOT NULL DEFAULT '[]',
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS meal_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id),
@@ -218,33 +232,17 @@ def create_user(
     last_name=None,
     age=None,
     country=None,
-    diagnosis=None,
-    goal=None,
 ):
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis, goal) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, diagnosis, goal),
+        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country),
     )
     conn.commit()
     user_id = cur.lastrowid
     conn.close()
     return user_id
-
-
-def set_diagnosis(user_id, diagnosis):
-    conn = _connect()
-    conn.execute("UPDATE users SET diagnosis = ? WHERE id = ?", (diagnosis, user_id))
-    conn.commit()
-    conn.close()
-
-
-def set_goal(user_id, goal):
-    conn = _connect()
-    conn.execute("UPDATE users SET goal = ? WHERE id = ?", (goal, user_id))
-    conn.commit()
-    conn.close()
 
 
 def get_user_by_email(email):
@@ -264,7 +262,7 @@ def get_user_by_google_sub(google_sub):
 def list_users():
     conn = _connect()
     rows = conn.execute(
-        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, diagnosis, goal, created_at "
+        "SELECT id, email, auth_provider, is_admin, first_name, last_name, age, country, created_at "
         "FROM users ORDER BY created_at ASC"
     ).fetchall()
     conn.close()
@@ -453,3 +451,36 @@ def get_meal_entries_for_user(user_id):
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+EMPTY_PATIENT_PROFILE = {"conditions": [], "other_condition": "", "medications": "", "supplements": "", "goals": []}
+
+
+def get_patient_profile(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM patient_profiles WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row:
+        return dict(EMPTY_PATIENT_PROFILE)
+    row = dict(row)
+    return {
+        "conditions": json.loads(row["conditions"]),
+        "other_condition": row["other_condition"] or "",
+        "medications": row["medications"] or "",
+        "supplements": row["supplements"] or "",
+        "goals": json.loads(row["goals"]),
+    }
+
+
+def set_patient_profile(user_id, conditions, other_condition, medications, supplements, goals):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO patient_profiles (user_id, conditions, other_condition, medications, supplements, goals, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(user_id) DO UPDATE SET conditions = excluded.conditions, other_condition = excluded.other_condition, "
+        "medications = excluded.medications, supplements = excluded.supplements, goals = excluded.goals, "
+        "updated_at = CURRENT_TIMESTAMP",
+        (user_id, json.dumps(conditions), other_condition, medications, supplements, json.dumps(goals)),
+    )
+    conn.commit()
+    conn.close()

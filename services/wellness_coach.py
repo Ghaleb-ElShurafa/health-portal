@@ -8,7 +8,7 @@ import streamlit as st
 import ai_wellness
 import db
 import reference_ranges as rr
-from services import uc_tracker
+from services import patient_profile, uc_tracker
 
 
 def _latest_entry(user):
@@ -85,8 +85,12 @@ def render(user, thresholds):
     if uc_summary:
         st.info(f"Also factoring in your UC Tracker data: {uc_summary}")
 
-    if user.get("diagnosis"):
-        st.caption(f"Personalizing for diagnosis: **{user['diagnosis']}**")
+    health_profile = patient_profile.get_profile(user)
+    profile_summary = patient_profile.summary_line(health_profile)
+    if profile_summary:
+        st.caption(f"📋 Personalizing using your Patient Profile: {profile_summary}")
+    else:
+        st.caption("📋 No Patient Profile on file — fill one in for a more personalized plan.")
 
     st.subheader("Tell us about your goals")
     with st.form("wellness_questionnaire"):
@@ -113,7 +117,7 @@ def render(user, thresholds):
             "Dietary restrictions": ", ".join(dietary_restrictions),
             "Additional notes": notes,
         }
-        profile = {"age": user.get("age"), "country": user.get("country"), "diagnosis": user.get("diagnosis")}
+        profile = {"age": user.get("age"), "country": user.get("country")}
 
         st.subheader("Your plan")
         if needs_clearance:
@@ -126,6 +130,6 @@ def render(user, thresholds):
             )
         else:
             with st.spinner("Generating your plan..."):
-                plan = ai_wellness.get_plan(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary)
+                plan = ai_wellness.get_plan(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary, health_profile)
             st.markdown(plan)
         st.caption(ai_wellness.DISCLAIMER)

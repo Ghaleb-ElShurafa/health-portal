@@ -1,6 +1,7 @@
 """Plate Score service: photograph or upload a photo of a meal, get an
 AI-estimated calorie/macro breakdown and a personalized health score —
-weighted by the user's diagnosis and dietary/fitness goal when set.
+weighted by the user's Patient Profile (conditions, medications,
+supplements, goals) when set.
 """
 
 from datetime import date
@@ -12,6 +13,7 @@ import streamlit as st
 import ai_food
 import db
 from ai_food import DISCLAIMER
+from services import patient_profile
 
 
 def _get_entries(user):
@@ -44,15 +46,12 @@ def render(user):
         "tailored to a specific health condition."
     )
 
-    context_bits = []
-    if user.get("diagnosis"):
-        context_bits.append(f"diagnosis: **{user['diagnosis']}**")
-    if user.get("goal"):
-        context_bits.append(f"goal: **{user['goal']}**")
-    if context_bits:
-        st.caption("Personalizing scores for " + " · ".join(context_bits))
+    health_profile = patient_profile.get_profile(user)
+    profile_summary = patient_profile.summary_line(health_profile)
+    if profile_summary:
+        st.caption(f"📋 Personalizing scores using your Patient Profile: {profile_summary}")
     else:
-        st.caption("No diagnosis or goal on file — set one from the landing page for a more personalized score.")
+        st.caption("📋 No Patient Profile on file — fill one in for a more personalized score.")
 
     st.subheader("Log a meal")
     tab_camera, tab_upload = st.tabs(["📷 Take Photo", "📁 Upload Photo"])
@@ -65,7 +64,7 @@ def render(user):
     photo = camera_photo or uploaded_photo
     if photo is not None and st.button("Analyze Meal", type="primary"):
         with st.spinner("Analyzing your meal..."):
-            result, error = ai_food.analyze_meal_photo(photo.getvalue(), photo.type, user)
+            result, error = ai_food.analyze_meal_photo(photo.getvalue(), photo.type, health_profile)
 
         if error:
             st.error(error)

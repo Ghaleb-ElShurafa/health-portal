@@ -6,6 +6,7 @@ model says — the AI only writes the plan text, never decides medical safety.
 """
 
 import gemini_client
+from patient_context import build_patient_context
 
 DISCLAIMER = (
     "This is a general wellness suggestion, not medical or nutritional advice tailored "
@@ -18,17 +19,14 @@ def is_configured():
     return gemini_client.is_configured()
 
 
-def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary=None):
+def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary=None, health_profile=None):
     lines = []
     if profile.get("age") or profile.get("country"):
         lines.append(f"User: age {profile.get('age', 'unknown')}, country {profile.get('country', 'unknown')}.")
-    if profile.get("diagnosis"):
-        lines.append(
-            f"Diagnosed with: {profile['diagnosis']}. Tailor both the diet and exercise "
-            "guidance specifically for someone managing this condition (e.g. common "
-            "trigger foods to be cautious with, flare-safe exercise intensity), in "
-            "addition to the questionnaire and bloodwork below."
-        )
+
+    context = build_patient_context(health_profile)
+    if context:
+        lines.append(context)
 
     lines.append("")
     lines.append("Questionnaire:")
@@ -53,7 +51,7 @@ def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc
     lines.append(
         "Write a short diet plan (general food/nutrition guidance, not a strict meal-by-meal "
         "plan) and a short exercise plan (type, frequency, intensity), tailored to the "
-        "questionnaire, diagnosis (if any), and any bloodwork/UC Tracker findings above. "
+        "questionnaire, patient profile (if any), and any bloodwork/UC Tracker findings above. "
         "Do not diagnose any condition. "
         + (
             "At least one bloodwork result needs medical attention — recommend the user get "
@@ -66,14 +64,14 @@ def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc
     return "\n".join(lines)
 
 
-def get_plan(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary=None):
+def get_plan(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary=None, health_profile=None):
     if not is_configured():
         return (
             "AI plan unavailable: no GEMINI_API_KEY configured. "
             "See README for setup instructions."
         )
 
-    prompt = _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary)
+    prompt = _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc_summary, health_profile)
     try:
         return gemini_client.generate(
             system_prompt=None,

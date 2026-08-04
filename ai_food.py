@@ -1,11 +1,12 @@
 """AI food-photo analysis for Plate Score: identifies food, estimates calories
 and macros, and produces a personalized health score + written assessment in a
-single Gemini multimodal call. The user's diagnosis and dietary goal (if set)
-are folded into the same prompt so scoring and advice are personalized without
-a second round-trip.
+single Gemini multimodal call. The user's Patient Profile (conditions,
+medications, supplements, goals) is folded into the same prompt so scoring
+and advice are personalized without a second round-trip.
 """
 
 import gemini_client
+from patient_context import build_patient_context
 
 DISCLAIMER = (
     "This is an estimate from a photo, not a lab measurement or medical advice. "
@@ -53,7 +54,7 @@ def is_configured():
     return gemini_client.is_configured()
 
 
-def _build_prompt(user):
+def _build_prompt(profile):
     lines = [
         "This is a photo of a meal for a diet-tracking app. Identify the food items "
         "(a short comma-separated list), estimate total calories and macros (protein, "
@@ -61,22 +62,18 @@ def _build_prompt(user):
         "(very unhealthy) to 10 (excellent, well-balanced) for a generally healthy diet."
     ]
 
-    if user.get("diagnosis"):
+    context = build_patient_context(profile)
+    if context:
+        lines.append(context)
         lines.append(
-            f"This user's health profile notes: {user['diagnosis']}. Weight the score "
-            "and assessment toward what matters for that condition (e.g. flag high sugar "
-            "or refined carbs clearly for diabetes, high sodium for blood pressure concerns)."
+            "Weight the score toward what matters for that profile — e.g. flag high sugar "
+            "or refined carbs for diabetes, high sodium for blood pressure concerns, protein "
+            "adequacy for a muscle-gain goal, calorie appropriateness for a weight-loss goal."
         )
-    if user.get("goal"):
+    else:
         lines.append(
-            f"This user's dietary/fitness goal is: {user['goal']}. Weight the score and "
-            "assessment toward that goal (e.g. protein adequacy for muscle gain, calorie "
-            "appropriateness for weight loss)."
-        )
-    if not user.get("diagnosis") and not user.get("goal"):
-        lines.append(
-            "No specific health condition or dietary goal is on file — score and assess "
-            "for general balanced nutrition."
+            "No specific health condition or goal is on file — score and assess for "
+            "general balanced nutrition."
         )
 
     lines.append(
@@ -88,15 +85,15 @@ def _build_prompt(user):
     return "\n".join(lines)
 
 
-def analyze_meal_photo(file_bytes, mime_type, user):
+def analyze_meal_photo(file_bytes, mime_type, profile):
     """Returns (result_dict_or_None, error_message_or_None). result_dict has
     keys: food_items, estimated_calories, protein_g, carbs_g, fat_g,
-    health_score, assessment.
+    health_score, assessment. profile: the user's Patient Profile dict.
     """
     if not is_configured():
         return None, "AI analysis unavailable: no GEMINI_API_KEY configured. See README."
 
-    prompt = _build_prompt(user)
+    prompt = _build_prompt(profile)
     for _ in range(2):
         try:
             result = gemini_client.extract_from_document(prompt, file_bytes, mime_type, MEAL_SCHEMA, max_tokens=1200)

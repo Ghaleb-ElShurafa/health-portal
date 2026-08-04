@@ -10,6 +10,7 @@ import streamlit as st
 
 import ai_uc
 import db
+from services import patient_profile
 
 SEVERITIES = ["Mild", "Moderate", "Severe"]
 
@@ -159,7 +160,9 @@ def render(user):
 
         if st.button("Analyze My Patterns"):
             with st.spinner("Analyzing..."):
-                summary = ai_uc.get_pattern_summary(food_stats, overall_flare_rate, len(entries))
+                summary = ai_uc.get_pattern_summary(
+                    food_stats, overall_flare_rate, len(entries), patient_profile.get_profile(user)
+                )
             st.markdown(summary)
             st.caption(ai_uc.DISCLAIMER)
     else:

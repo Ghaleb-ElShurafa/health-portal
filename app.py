@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import personal_doctor, plate_score, uc_tracker, wellness_coach
+from services import patient_profile, personal_doctor, plate_score, uc_tracker, wellness_coach
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -26,6 +26,8 @@ if "guest_uc_entries" not in st.session_state:
     st.session_state.guest_uc_entries = []
 if "guest_meal_entries" not in st.session_state:
     st.session_state.guest_meal_entries = []
+if "guest_patient_profile" not in st.session_state:
+    st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
 if "view_as_user" not in st.session_state:
     st.session_state.view_as_user = False
 if "current_service" not in st.session_state:
@@ -72,6 +74,7 @@ def _log_out(user):
     st.session_state.guest_entries = []
     st.session_state.guest_uc_entries = []
     st.session_state.guest_meal_entries = []
+    st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
     st.session_state.view_as_user = False
     st.session_state.current_service = None
     st.session_state.search_answer = None
@@ -141,21 +144,11 @@ def render_auth_gate():
             email = st.text_input("Email", key="signup_email")
             password = st.text_input("Password", type="password", key="signup_password")
             st.caption("Password needs at least 8 characters, including one number and one uppercase letter.")
-            diagnosis = st.text_input(
-                "Diagnosis (optional)",
-                key="signup_diagnosis",
-                placeholder="e.g. Ulcerative Colitis — leave blank if none",
-            )
-            goal = st.text_input(
-                "Dietary / fitness goal (optional)",
-                key="signup_goal",
-                placeholder="e.g. Muscle gain, high protein — leave blank if none",
-            )
+            st.caption("Medical conditions, medications, and goals are collected after signup in Patient Profile.")
             keep_logged_in = st.checkbox("Keep me logged in", key="signup_keep")
             if st.form_submit_button("Sign Up"):
                 user, error = auth.sign_up(
                     email, password, first_name, last_name, int(age) if age is not None else None, country,
-                    diagnosis, goal,
                 )
                 if user:
                     if keep_logged_in:
@@ -228,8 +221,6 @@ def render_landing(user, as_admin_preview=False):
         subtitle = f"Signed in as <strong>{html.escape(user['email'])}</strong>"
         if user["auth_provider"] == "guest":
             subtitle += " (guest session)"
-        elif user.get("diagnosis"):
-            subtitle += f" · Diagnosis: <strong>{html.escape(user['diagnosis'])}</strong>"
         st.markdown(f'<p class="hero-subtitle">{subtitle}</p>', unsafe_allow_html=True)
     with top_right:
         if as_admin_preview:
@@ -239,28 +230,11 @@ def render_landing(user, as_admin_preview=False):
         elif st.button("Log out"):
             _log_out(user)
 
-    if user["auth_provider"] != "guest":
-        with st.expander("Update my diagnosis"):
-            new_diagnosis = st.text_input(
-                "Diagnosis", value=user.get("diagnosis") or "", key="diagnosis_edit",
-                placeholder="e.g. Ulcerative Colitis — leave blank if none",
-            )
-            if st.button("Save diagnosis"):
-                db.set_diagnosis(user["id"], new_diagnosis.strip() or None)
-                st.session_state.auth_user["diagnosis"] = new_diagnosis.strip() or None
-                st.success("Diagnosis updated.")
-                st.rerun()
-
-        with st.expander("Update my dietary / fitness goal"):
-            new_goal = st.text_input(
-                "Goal", value=user.get("goal") or "", key="goal_edit",
-                placeholder="e.g. Muscle gain, high protein — leave blank if none",
-            )
-            if st.button("Save goal"):
-                db.set_goal(user["id"], new_goal.strip() or None)
-                st.session_state.auth_user["goal"] = new_goal.strip() or None
-                st.success("Goal updated.")
-                st.rerun()
+    profile_summary = patient_profile.summary_line(patient_profile.get_profile(user))
+    if profile_summary:
+        st.caption("📋 " + profile_summary)
+    else:
+        st.caption("📋 No Patient Profile on file yet — fill one in below for more personalized results.")
 
     announcement = _cached_announcement()
     if announcement:
@@ -293,21 +267,31 @@ def render_landing(user, as_admin_preview=False):
     row1 = st.columns(3)
     with row1[0]:
         with st.container(border=True):
+            st.markdown('<div class="service-icon-badge badge-blue">📋</div>', unsafe_allow_html=True)
+            st.markdown("#### Patient Profile")
+            st.caption("A general health screening — conditions, medications, supplements, goals — that personalizes every other service.")
+            if st.button("Open", key="open_patient_profile"):
+                st.session_state.current_service = "patient_profile"
+                st.rerun()
+    with row1[1]:
+        with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-teal">🩺</div>', unsafe_allow_html=True)
             st.markdown("#### Personal Doctor")
             st.caption("Upload bloodwork documents, get AI-powered insights, and see trends over time.")
             if st.button("Open", key="open_personal_doctor"):
                 st.session_state.current_service = "personal_doctor"
                 st.rerun()
-    with row1[1]:
+    with row1[2]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-green">🥗</div>', unsafe_allow_html=True)
             st.markdown("#### Wellness Coach")
-            st.caption("Get a personalized diet and exercise plan, tailored to your diagnosis and bloodwork.")
+            st.caption("Get a personalized diet and exercise plan, tailored to your profile and bloodwork.")
             if st.button("Open", key="open_wellness_coach"):
                 st.session_state.current_service = "wellness_coach"
                 st.rerun()
-    with row1[2]:
+
+    row2 = st.columns(3)
+    with row2[0]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-orange">🔥</div>', unsafe_allow_html=True)
             st.markdown("#### UC Tracker")
@@ -315,17 +299,15 @@ def render_landing(user, as_admin_preview=False):
             if st.button("Open", key="open_uc_tracker"):
                 st.session_state.current_service = "uc_tracker"
                 st.rerun()
-
-    row2 = st.columns(3)
-    with row2[0]:
+    with row2[1]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-pink">🍽️</div>', unsafe_allow_html=True)
             st.markdown("#### Plate Score")
-            st.caption("Photograph your meal for an AI-scored calorie and nutrition breakdown, personalized to your goal.")
+            st.caption("Photograph your meal for an AI-scored calorie and nutrition breakdown, personalized to your profile.")
             if st.button("Open", key="open_plate_score"):
                 st.session_state.current_service = "plate_score"
                 st.rerun()
-    with row2[1]:
+    with row2[2]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-purple">➕</div>', unsafe_allow_html=True)
             st.markdown("#### More services")
@@ -459,6 +441,8 @@ else:
 
     if current_user.get("is_admin") and not st.session_state.view_as_user:
         render_admin(current_user)
+    elif st.session_state.current_service == "patient_profile":
+        patient_profile.render(current_user)
     elif st.session_state.current_service == "personal_doctor":
         personal_doctor.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "wellness_coach":

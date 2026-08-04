@@ -8,6 +8,7 @@ is urgent.
 """
 
 import gemini_client
+from patient_context import build_patient_context
 
 DISCLAIMER = (
     "This is general educational information, not medical advice or a diagnosis. "
@@ -60,7 +61,7 @@ def extract_from_document(file_bytes, mime_type):
         return None, "Couldn't read that document — try a clearer image/PDF, or enter values manually below."
 
 
-def _build_prompt(results, sex):
+def _build_prompt(results, sex, profile=None):
     lines = [f"Patient sex: {sex}", "", "Lab results:"]
     any_consult = False
     for name, unit, value, flag in results:
@@ -81,18 +82,27 @@ def _build_prompt(results, sex):
             "any general health habits that could help maintain them."
         )
     )
+
+    context = build_patient_context(profile)
+    if context:
+        lines.append("")
+        lines.append(context)
+
     return "\n".join(lines)
 
 
-def get_advice(results, sex):
-    """results: list of (display_name, unit, value, Flag) tuples."""
+def get_advice(results, sex, profile=None):
+    """results: list of (display_name, unit, value, Flag) tuples. profile:
+    the user's Patient Profile dict (conditions/medications/supplements/
+    goals), optional.
+    """
     if not is_configured():
         return (
             "AI explanation unavailable: no GEMINI_API_KEY configured. "
             "Showing rule-based results only. See README for setup instructions."
         )
 
-    prompt = _build_prompt(results, sex)
+    prompt = _build_prompt(results, sex, profile)
     try:
         return gemini_client.generate(
             system_prompt=None,

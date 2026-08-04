@@ -6,6 +6,7 @@ show, it doesn't invent or override them.
 """
 
 import gemini_client
+from patient_context import build_patient_context
 
 DISCLAIMER = (
     "This is a pattern observation from your own logged data, not a medical diagnosis. "
@@ -18,7 +19,7 @@ def is_configured():
     return gemini_client.is_configured()
 
 
-def _build_prompt(food_stats, overall_flare_rate, num_entries):
+def _build_prompt(food_stats, overall_flare_rate, num_entries, profile=None):
     lines = [
         f"The user has logged {num_entries} days. Overall flare rate: {overall_flare_rate:.0%} of days.",
         "",
@@ -38,10 +39,16 @@ def _build_prompt(food_stats, overall_flare_rate, num_entries):
         "draw conclusions yet. Do not diagnose or claim certainty — frame findings as "
         "patterns worth discussing with a doctor, not confirmed causes."
     )
+
+    context = build_patient_context(profile)
+    if context:
+        lines.append("")
+        lines.append(context)
+
     return "\n".join(lines)
 
 
-def get_pattern_summary(food_stats, overall_flare_rate, num_entries):
+def get_pattern_summary(food_stats, overall_flare_rate, num_entries, profile=None):
     """food_stats: list of (food_name, {"times_eaten", "times_on_flare", "flare_rate"}) tuples."""
     if not is_configured():
         return (
@@ -51,7 +58,7 @@ def get_pattern_summary(food_stats, overall_flare_rate, num_entries):
     if not food_stats:
         return "Not enough data yet to spot patterns — keep logging entries."
 
-    prompt = _build_prompt(food_stats, overall_flare_rate, num_entries)
+    prompt = _build_prompt(food_stats, overall_flare_rate, num_entries, profile)
     try:
         return gemini_client.generate(
             system_prompt=None,
