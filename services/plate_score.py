@@ -58,6 +58,7 @@ def render(user):
     tab_camera, tab_upload = st.tabs(["📷 Take Photo", "📁 Upload Photo"])
     with tab_camera:
         camera_photo = st.camera_input("Take a photo of your meal", label_visibility="collapsed")
+        st.caption("Camera not working, no camera on this device, or on a computer? Use the **📁 Upload Photo** tab instead.")
     with tab_upload:
         uploaded_photo = st.file_uploader("Upload a photo of your meal", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
 
