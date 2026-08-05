@@ -117,7 +117,7 @@ def _extract_clicked_date(result):
 
 def get_recent_summary(user, max_triggers=3):
     """Short text summary of recent symptom rate + likely triggers across all
-    tracked conditions, for other services (e.g. Wellness Coach) to factor
+    tracked conditions, for other services (e.g. Fitness Coach) to factor
     in. Returns None if there's no data yet.
     """
     tracked = _get_tracked(user)

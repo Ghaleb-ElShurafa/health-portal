@@ -198,7 +198,32 @@ def init_db():
             medications TEXT,
             supplements TEXT,
             goals TEXT NOT NULL DEFAULT '[]',
+            height_cm REAL,
+            weight_kg REAL,
+            sex TEXT,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    existing_profile_columns = {row["name"] for row in conn.execute("PRAGMA table_info(patient_profiles)").fetchall()}
+    profile_migrations = {
+        "height_cm": "ALTER TABLE patient_profiles ADD COLUMN height_cm REAL",
+        "weight_kg": "ALTER TABLE patient_profiles ADD COLUMN weight_kg REAL",
+        "sex": "ALTER TABLE patient_profiles ADD COLUMN sex TEXT",
+    }
+    for column, statement in profile_migrations.items():
+        if column not in existing_profile_columns:
+            conn.execute(statement)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS body_metrics_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            recorded_at TEXT NOT NULL,
+            height_cm REAL,
+            weight_kg REAL,
+            bmi REAL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
     )
@@ -240,6 +265,32 @@ def init_db():
             severity TEXT,
             triggers TEXT,
             notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS fitness_settings (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            facility TEXT NOT NULL DEFAULT 'Both',
+            days_per_week INTEGER,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workout_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            log_date TEXT NOT NULL,
+            exercise_name TEXT NOT NULL,
+            muscle_group TEXT NOT NULL,
+            duration_min REAL,
+            intensity TEXT,
+            calories_burned REAL,
+            completed INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -458,7 +509,10 @@ def get_meal_entries_for_user(user_id):
     return [dict(row) for row in rows]
 
 
-EMPTY_PATIENT_PROFILE = {"conditions": [], "other_condition": "", "medications": "", "supplements": "", "goals": []}
+EMPTY_PATIENT_PROFILE = {
+    "conditions": [], "other_condition": "", "medications": "", "supplements": "", "goals": [],
+    "height_cm": None, "weight_kg": None, "sex": "",
+}
 
 
 def get_patient_profile(user_id):
@@ -474,21 +528,50 @@ def get_patient_profile(user_id):
         "medications": row["medications"] or "",
         "supplements": row["supplements"] or "",
         "goals": json.loads(row["goals"]),
+        "height_cm": row.get("height_cm"),
+        "weight_kg": row.get("weight_kg"),
+        "sex": row.get("sex") or "",
     }
 
 
-def set_patient_profile(user_id, conditions, other_condition, medications, supplements, goals):
+def set_patient_profile(
+    user_id, conditions, other_condition, medications, supplements, goals,
+    height_cm=None, weight_kg=None, sex="",
+):
     conn = _connect()
     conn.execute(
-        "INSERT INTO patient_profiles (user_id, conditions, other_condition, medications, supplements, goals, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+        "INSERT INTO patient_profiles (user_id, conditions, other_condition, medications, supplements, goals, "
+        "height_cm, weight_kg, sex, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
         "ON CONFLICT(user_id) DO UPDATE SET conditions = excluded.conditions, other_condition = excluded.other_condition, "
         "medications = excluded.medications, supplements = excluded.supplements, goals = excluded.goals, "
+        "height_cm = excluded.height_cm, weight_kg = excluded.weight_kg, sex = excluded.sex, "
         "updated_at = CURRENT_TIMESTAMP",
-        (user_id, json.dumps(conditions), other_condition, medications, supplements, json.dumps(goals)),
+        (user_id, json.dumps(conditions), other_condition, medications, supplements, json.dumps(goals),
+         height_cm, weight_kg, sex),
     )
     conn.commit()
     conn.close()
+
+
+def add_body_metrics_entry(user_id, recorded_at, height_cm, weight_kg, bmi):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO body_metrics_history (user_id, recorded_at, height_cm, weight_kg, bmi) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (user_id, recorded_at, height_cm, weight_kg, bmi),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_body_metrics_history(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM body_metrics_history WHERE user_id = ? ORDER BY recorded_at ASC, id ASC", (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 EMPTY_TRACKED_CONDITIONS = {"conditions": [], "other_condition": ""}
@@ -543,6 +626,71 @@ def get_condition_entries(user_id, condition):
     rows = conn.execute(
         "SELECT * FROM condition_entries WHERE user_id = ? AND condition = ? ORDER BY entry_date ASC, id ASC",
         (user_id, condition),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+EMPTY_FITNESS_SETTINGS = {"facility": "Both", "days_per_week": None}
+
+
+def get_fitness_settings(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM fitness_settings WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row:
+        return dict(EMPTY_FITNESS_SETTINGS)
+    row = dict(row)
+    return {"facility": row["facility"], "days_per_week": row["days_per_week"]}
+
+
+def set_fitness_settings(user_id, facility, days_per_week):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO fitness_settings (user_id, facility, days_per_week, updated_at) "
+        "VALUES (?, ?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(user_id) DO UPDATE SET facility = excluded.facility, "
+        "days_per_week = excluded.days_per_week, updated_at = CURRENT_TIMESTAMP",
+        (user_id, facility, days_per_week),
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_workout_log_entry(user_id, log_date, exercise_name, muscle_group, duration_min, intensity, calories_burned, completed):
+    conn = _connect()
+    cur = conn.execute(
+        "INSERT INTO workout_log (user_id, log_date, exercise_name, muscle_group, duration_min, intensity, "
+        "calories_burned, completed) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (user_id, log_date, exercise_name, muscle_group, duration_min, intensity, calories_burned, 1 if completed else 0),
+    )
+    conn.commit()
+    entry_id = cur.lastrowid
+    conn.close()
+    return entry_id
+
+
+def update_workout_log_entry(entry_id, duration_min, intensity, calories_burned, completed):
+    conn = _connect()
+    conn.execute(
+        "UPDATE workout_log SET duration_min = ?, intensity = ?, calories_burned = ?, completed = ? WHERE id = ?",
+        (duration_min, intensity, calories_burned, 1 if completed else 0, entry_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_workout_log_entry(entry_id):
+    conn = _connect()
+    conn.execute("DELETE FROM workout_log WHERE id = ?", (entry_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_workout_log(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM workout_log WHERE user_id = ? ORDER BY log_date ASC, id ASC", (user_id,)
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]

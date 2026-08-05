@@ -1,7 +1,7 @@
 {
   "name": "Health Services Portal",
   "short_name": "Health Portal",
-  "description": "Bloodwork analysis, wellness coaching, condition tracking, and meal scoring, personalized to your health profile.",
+  "description": "Bloodwork analysis, fitness coaching, condition tracking, and meal scoring, personalized to your health profile.",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0e1117",

@@ -1,6 +1,6 @@
 """Site-wide AI features: the top search bar (general Q&A) and the sidebar
 help chat (navigation / technical support, and genuinely anything else the
-user brings up). Separate from ai_advice.py and ai_wellness.py, which handle
+user brings up). Separate from ai_advice.py and ai_fitness.py, which handle
 service-specific AI content.
 """
 
@@ -12,9 +12,10 @@ services as cards. There are currently five services:
 
 - "Patient Profile": a general health screening — medical conditions
   (searchable, with None/Prefer not to say available), medications,
-  supplements, and goals (weight loss, muscle gain, etc.). This is the first
-  card and the recommended starting point — every other AI-powered service
-  reads from it to personalize its output.
+  supplements, goals (weight loss, muscle gain, etc.), and optional body
+  metrics (height, weight, sex) used to compute BMI and track it over time.
+  This is the first card and the recommended starting point — every other
+  AI-powered service reads from it to personalize its output.
 - "Bloodwork Analysis": users upload a bloodwork document (image or PDF) —
   there's no manual-entry option, a document is required. The app extracts
   lipid panel, glucose, HbA1c, and blood pressure values, lets the user
@@ -22,10 +23,19 @@ services as cards. There are currently five services:
   ranges, gives an AI-generated plain-language summary personalized by their
   Patient Profile, and shows trend charts across every bloodwork entry on
   file over time.
-- "Wellness Coach": generates a diet and exercise plan personalized from a
-  user's latest Bloodwork Analysis results, their Patient Profile, and their
-  Conditions Tracker history (if any), always recommending medical clearance
-  before exercise if any bloodwork result needs a doctor.
+- "Fitness Coach": has two modes. "My Routine" lets users pick a facility
+  (Home/Gym/Both) and a weekly workout-day goal, then add exercises from a
+  curated library (each tagged by muscle group and facility, with a linked
+  demo-video search and an estimated calories-burned figure computed from
+  duration, intensity, and the user's weight), check them off on a daily
+  checklist, and see an interactive muscle-figure diagram (front view,
+  male/female, scaled by BMI) highlighting which muscle groups were worked
+  recently. It also compares calories burned against calories eaten (from
+  Plate Score) and can generate an AI weekly adherence recap. "AI Suggested
+  Plan" is the original mode: a generated diet and exercise plan personalized
+  from a user's latest Bloodwork Analysis results, their Patient Profile, and
+  their Conditions Tracker history (if any), always recommending medical
+  clearance before exercise if any bloodwork result needs a doctor.
 - "Conditions Tracker": users pick one or more conditions to monitor
   (searchable dropdown, plus a custom "other condition" option, same pattern
   as Patient Profile), then log symptoms on a visual calendar — clicking any

@@ -1,13 +1,21 @@
 """Patient Profile service: a general health-screening intake — conditions,
-medications, supplements, and goals — that personalizes every other service
-in the portal (Bloodwork Analysis, Wellness Coach, Conditions Tracker, Plate Score).
+medications, supplements, goals, and optional body metrics (height, weight,
+sex) — that personalizes every other service in the portal (Bloodwork
+Analysis, Fitness Coach, Conditions Tracker, Plate Score).
 """
 
+from datetime import date
+
+import pandas as pd
+import plotly.express as px
 import streamlit as st
 
+import body_metrics
 import db
 
 NOT_DISCLOSED = ["None", "Prefer not to say"]
+
+SEX_OPTIONS = ["Prefer not to say", "Male", "Female"]
 
 CONDITIONS = NOT_DISCLOSED + [
     "Type 1 Diabetes", "Type 2 Diabetes", "Prediabetes",
@@ -62,6 +70,7 @@ def _has_data(profile):
     return bool(
         profile.get("conditions") or profile.get("other_condition")
         or profile.get("medications") or profile.get("supplements") or profile.get("goals")
+        or profile.get("height_cm") or profile.get("weight_kg")
     )
 
 
@@ -78,7 +87,7 @@ def _save_notice():
                 st.rerun()
 
 
-def _render_summary(profile):
+def _render_summary(user, profile):
     st.subheader("Your profile")
     with st.container(border=True):
         conditions = list(profile.get("conditions") or [])
@@ -98,9 +107,32 @@ def _render_summary(profile):
             st.markdown("**🎯 Goals**")
             st.write(", ".join(profile["goals"]))
 
+        if profile.get("height_cm") or profile.get("weight_kg"):
+            st.markdown("**📏 Body metrics**")
+            bits = []
+            if profile.get("height_cm"):
+                feet, inches = body_metrics.cm_to_ft_in(profile["height_cm"])
+                bits.append(f"Height: {profile['height_cm']:.0f} cm ({feet} ft {inches:.0f} in)")
+            if profile.get("weight_kg"):
+                bits.append(f"Weight: {profile['weight_kg']:.1f} kg ({body_metrics.kg_to_lb(profile['weight_kg']):.0f} lb)")
+            if profile.get("sex"):
+                bits.append(f"Sex: {profile['sex']}")
+            st.write(" · ".join(bits))
+            bmi = body_metrics.compute_bmi(profile.get("weight_kg"), profile.get("height_cm"))
+            if bmi:
+                st.write(f"BMI: **{bmi:.1f}** ({body_metrics.bmi_category(bmi)})")
+
         if st.button("✏️ Edit Profile"):
             st.session_state.pp_editing = True
             st.rerun()
+
+    if user["auth_provider"] != "guest":
+        history = db.get_body_metrics_history(user["id"])
+        if len(history) >= 2:
+            st.subheader("Weight over time")
+            hist_df = pd.DataFrame(history)
+            fig = px.line(hist_df, x="recorded_at", y="weight_kg", markers=True, title="Weight (kg) over time")
+            st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_form(user, profile, has_data):
@@ -108,6 +140,21 @@ def _render_form(user, profile, has_data):
         if st.button("← Cancel and view summary"):
             st.session_state.pp_editing = False
             st.rerun()
+
+    st.markdown(
+        "**📏 Body metrics** (optional — used for BMI tracking and to scale your Fitness "
+        "Coach muscle diagram; leave at 0 to skip)"
+    )
+    st.session_state.setdefault("pp_unit_system", "Metric (cm / kg)")
+    unit_system = st.radio(
+        "Units", ["Metric (cm / kg)", "Imperial (ft-in / lb)"], horizontal=True, key="pp_unit_system",
+    )
+    default_height_cm = profile.get("height_cm") or 0.0
+    default_weight_kg = profile.get("weight_kg") or 0.0
+    default_feet, default_inches = (
+        body_metrics.cm_to_ft_in(default_height_cm) if default_height_cm else (0, 0.0)
+    )
+    default_lb = body_metrics.kg_to_lb(default_weight_kg) if default_weight_kg else 0.0
 
     with st.form("patient_profile_form"):
         conditions = st.multiselect(
@@ -137,15 +184,55 @@ def _render_form(user, profile, has_data):
             default=[g for g in profile["goals"] if g in GOALS],
             placeholder="What are you trying to achieve?",
         )
+
+        if unit_system.startswith("Metric"):
+            height_cm_input = st.number_input(
+                "Height (cm)", min_value=0.0, max_value=300.0, value=float(default_height_cm), step=0.5,
+            )
+            weight_kg_input = st.number_input(
+                "Weight (kg)", min_value=0.0, max_value=400.0, value=float(default_weight_kg), step=0.1,
+            )
+        else:
+            col_ft, col_in = st.columns(2)
+            with col_ft:
+                feet_input = st.number_input(
+                    "Height — feet", min_value=0, max_value=8, value=int(default_feet), step=1,
+                )
+            with col_in:
+                inches_input = st.number_input(
+                    "Height — inches", min_value=0.0, max_value=11.9, value=float(round(default_inches, 1)), step=0.5,
+                )
+            weight_lb_input = st.number_input(
+                "Weight (lb)", min_value=0.0, max_value=880.0, value=float(round(default_lb, 1)), step=0.5,
+            )
+
+        sex = st.selectbox(
+            "Sex",
+            options=SEX_OPTIONS,
+            index=SEX_OPTIONS.index(profile.get("sex")) if profile.get("sex") in SEX_OPTIONS else 0,
+            help="Only used to pick which muscle-figure diagram style shows in Fitness Coach.",
+        )
+
         submitted = st.form_submit_button("Save Profile")
 
     if submitted:
+        if unit_system.startswith("Metric"):
+            height_cm = height_cm_input or None
+            weight_kg = weight_kg_input or None
+        else:
+            height_cm = body_metrics.ft_in_to_cm(feet_input, inches_input) or None
+            weight_kg = body_metrics.lb_to_kg(weight_lb_input) or None
+        sex_value = "" if sex == "Prefer not to say" else sex
+
         new_profile = {
             "conditions": conditions,
             "other_condition": other_condition.strip(),
             "medications": medications.strip(),
             "supplements": supplements.strip(),
             "goals": goals,
+            "height_cm": height_cm,
+            "weight_kg": weight_kg,
+            "sex": sex_value,
         }
         if user["auth_provider"] == "guest":
             st.session_state.guest_patient_profile = new_profile
@@ -153,7 +240,11 @@ def _render_form(user, profile, has_data):
             db.set_patient_profile(
                 user["id"], conditions, other_condition.strip(),
                 medications.strip(), supplements.strip(), goals,
+                height_cm=height_cm, weight_kg=weight_kg, sex=sex_value,
             )
+            if height_cm and weight_kg:
+                bmi = body_metrics.compute_bmi(weight_kg, height_cm)
+                db.add_body_metrics_entry(user["id"], date.today().isoformat(), height_cm, weight_kg, bmi)
         st.session_state.pp_editing = False
         st.session_state.pp_just_saved = True
         st.rerun()
@@ -171,7 +262,7 @@ def render(user):
 
     st.markdown(
         "A general health screening. Nothing here is required — but the more you share, "
-        "the more personalized every other service (Bloodwork Analysis, Wellness Coach, "
+        "the more personalized every other service (Bloodwork Analysis, Fitness Coach, "
         "Conditions Tracker, and Plate Score) can be for you."
     )
     st.caption(
@@ -187,6 +278,6 @@ def render(user):
     _save_notice()
 
     if has_data and not st.session_state.pp_editing:
-        _render_summary(profile)
+        _render_summary(user, profile)
     else:
         _render_form(user, profile, has_data)

@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import bloodwork_analysis, conditions_tracker, patient_profile, plate_score, wellness_coach
+from services import bloodwork_analysis, conditions_tracker, fitness_coach, patient_profile, plate_score
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -30,6 +30,10 @@ if "guest_meal_entries" not in st.session_state:
     st.session_state.guest_meal_entries = []
 if "guest_patient_profile" not in st.session_state:
     st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
+if "guest_fitness_settings" not in st.session_state:
+    st.session_state.guest_fitness_settings = dict(db.EMPTY_FITNESS_SETTINGS)
+if "guest_workout_log" not in st.session_state:
+    st.session_state.guest_workout_log = []
 if "view_as_user" not in st.session_state:
     st.session_state.view_as_user = False
 if "current_service" not in st.session_state:
@@ -78,6 +82,9 @@ def _log_out(user):
     st.session_state.guest_condition_entries = {}
     st.session_state.guest_meal_entries = []
     st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
+    st.session_state.guest_fitness_settings = dict(db.EMPTY_FITNESS_SETTINGS)
+    st.session_state.guest_workout_log = []
+    st.session_state.pop("guest_workout_log_next_id", None)
     st.session_state.pop("pp_editing", None)
     st.session_state.pp_just_saved = False
     st.session_state.view_as_user = False
@@ -211,9 +218,10 @@ def render_site_menu(user):
                 "2. **Bloodwork Analysis** — upload a photo or PDF of a lab report; AI "
                 "reads the values, you review/correct them, then save to see flagged "
                 "results and a summary.\n"
-                "3. **Wellness Coach** — answer a short questionnaire to get a diet + "
-                "exercise plan, automatically enriched by your bloodwork and Conditions "
-                "Tracker data if you have any.\n"
+                "3. **Fitness Coach** — build your own workout routine from a curated "
+                "exercise library, or answer a short questionnaire to get an AI-suggested "
+                "diet + exercise plan, automatically enriched by your bloodwork and "
+                "Conditions Tracker data if you have any.\n"
                 "4. **Conditions Tracker** — pick a condition to monitor, then click any "
                 "day on the calendar to log symptoms; after a few entries, analyze "
                 "patterns to spot trends and possible triggers.\n"
@@ -244,7 +252,7 @@ def render_site_menu(user):
             with st.expander("What if I don't have a lab report to upload?"):
                 st.write(
                     "Bloodwork Analysis requires an uploaded document, but every other "
-                    "service works without one — Wellness Coach falls back to its "
+                    "service works without one — Fitness Coach falls back to its "
                     "questionnaire, and Conditions Tracker/Plate Score/Patient Profile "
                     "don't need bloodwork at all."
                 )
@@ -362,11 +370,11 @@ def render_landing(user, as_admin_preview=False):
                 st.rerun()
     with row1[2]:
         with st.container(border=True):
-            st.markdown('<div class="service-icon-badge badge-green">🥗</div>', unsafe_allow_html=True)
-            st.markdown("#### Wellness Coach")
-            st.caption("Get a personalized diet and exercise plan, tailored to your profile and bloodwork.")
-            if st.button("Open", key="open_wellness_coach"):
-                st.session_state.current_service = "wellness_coach"
+            st.markdown('<div class="service-icon-badge badge-green">🏋️</div>', unsafe_allow_html=True)
+            st.markdown("#### Fitness Coach")
+            st.caption("Build your own routine or get an AI-suggested plan, with a muscle diagram and calorie tracking.")
+            if st.button("Open", key="open_fitness_coach"):
+                st.session_state.current_service = "fitness_coach"
                 st.rerun()
 
     row2 = st.columns(3)
@@ -524,8 +532,8 @@ else:
         patient_profile.render(current_user)
     elif st.session_state.current_service == "bloodwork_analysis":
         bloodwork_analysis.render(current_user, _cached_thresholds())
-    elif st.session_state.current_service == "wellness_coach":
-        wellness_coach.render(current_user, _cached_thresholds())
+    elif st.session_state.current_service == "fitness_coach":
+        fitness_coach.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "conditions_tracker":
         conditions_tracker.render(current_user)
     elif st.session_state.current_service == "plate_score":

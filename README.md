@@ -5,12 +5,13 @@ personalized dashboard, and open individual tools — currently **Patient
 Profile** (a general health screening — conditions, medications,
 supplements, goals — that personalizes every other service), **Bloodwork
 Analysis** (upload a lab report document — AI-extracted and tracked over
-time; no manual number entry), **Wellness Coach** (diet/exercise plans
-tailored to your profile + bloodwork + Conditions Tracker data), **Conditions
-Tracker** (pick any condition to monitor, log symptoms on a calendar, and get
-an AI trend/trigger summary), and **Plate Score** (photograph a meal for an
-AI-scored calorie/nutrition breakdown, personalized to your profile). More
-services can be added as new cards on the landing page.
+time; no manual number entry), **Fitness Coach** (build your own workout
+routine with a muscle diagram and calorie tracking, or get an AI-suggested
+diet/exercise plan), **Conditions Tracker** (pick any condition to monitor,
+log symptoms on a calendar, and get an AI trend/trigger summary), and
+**Plate Score** (photograph a meal for an AI-scored calorie/nutrition
+breakdown, personalized to your profile). More services can be added as new
+cards on the landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -26,14 +27,17 @@ the AI — the model only writes explanatory text, never decides what's urgent.
 - **Patient Profile**: a general health screening — medical conditions
   (fuzzy-searchable multiselect, e.g. typing "ulc" surfaces both "Ulcers"
   and "Ulcerative Colitis"), an "other condition" free-text field, current
-  medications, supplements, and goals (weight loss, muscle gain, diet
-  change, etc.) — with **None** / **Prefer not to say** available for
-  anything a user would rather skip. This is the single source of truth
-  every other AI-powered service reads from (via `patient_context.py`) to
-  personalize its output — e.g. a diabetes condition makes Bloodwork
-  Analysis and Plate Score sugar/carb-aware, a muscle-gain goal shapes
-  Wellness Coach's exercise plan and Plate Score's protein feedback, and any
-  listed medication gets factored into Bloodwork Analysis's suggestions.
+  medications, supplements, goals (weight loss, muscle gain, diet
+  change, etc.), and optional body metrics (height, weight, sex — metric or
+  imperial units) used to compute BMI, chart weight over time, and scale the
+  Fitness Coach muscle diagram — with **None** / **Prefer not to say**
+  available for anything a user would rather skip. This is the single
+  source of truth every other AI-powered service reads from (via
+  `patient_context.py`) to personalize its output — e.g. a diabetes
+  condition makes Bloodwork Analysis and Plate Score sugar/carb-aware, a
+  muscle-gain goal shapes Fitness Coach's exercise plan and Plate Score's
+  protein feedback, and any listed medication gets factored into Bloodwork
+  Analysis's suggestions.
 - **Bloodwork Analysis**: upload a photo or PDF of a lab report — there's no
   manual-entry path, a document is required. Gemini reads it directly (no
   OCR step) and pre-fills a lipid panel, glucose/HbA1c, and blood pressure
@@ -43,11 +47,22 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   gets an AI-generated plain-language summary personalized by your Patient
   Profile, and adds to trend charts across every bloodwork entry on file
   over time.
-- **Wellness Coach**: a diet + exercise plan personalized from your latest
-  Bloodwork Analysis entry, your Patient Profile, and your Conditions Tracker
-  history (if any) — falls back to a short questionnaire if none of that
-  exists yet. Recommends medical clearance before exercise whenever
-  bloodwork has a "consult a doctor" flag.
+- **Fitness Coach**: two modes. **My Routine** — set a facility (Home / Gym /
+  Both) and a weekly workout-day goal, add exercises from a curated library
+  (`exercise_library.py`, ~30 exercises tagged by muscle group and facility,
+  each with a linked demo-video search rather than a fabricated video link),
+  check them off on a daily checklist, and see an interactive SVG
+  muscle-figure diagram (`muscle_diagram.py`, hand-built front view, male/female,
+  scaled by BMI category) highlighting which muscle groups were worked in
+  the last 3/7 days. Calories burned are computed rule-based (MET x weight x
+  duration x intensity, not AI) and compared against calories eaten from
+  Plate Score for the day/week, with an optional AI-generated weekly
+  adherence recap. **AI Suggested Plan** — the original mode: a diet +
+  exercise plan personalized from your latest Bloodwork Analysis entry, your
+  Patient Profile, and your Conditions Tracker history (if any), falling
+  back to a short questionnaire if none of that exists yet. Recommends
+  medical clearance before exercise whenever bloodwork has a "consult a
+  doctor" flag.
 - **Conditions Tracker**: pick which condition(s) to actively monitor via the
   same fuzzy-searchable dropdown as Patient Profile (plus a custom "other
   condition" field), then click any day on a visual calendar to log whether
@@ -228,11 +243,17 @@ auth.py                        password hashing/validation, Google OAuth flow,
                                 "keep me logged in" tokens
 db.py                          storage: users, patient profiles, tracked
                                 conditions, condition entries, bloodwork
-                                entries, meal entries, settings, issues,
-                                activity log — local SQLite by default, or
-                                Turso if configured
+                                entries, meal entries, fitness settings,
+                                workout log, body metrics history, settings,
+                                issues, activity log — local SQLite by
+                                default, or Turso if configured
 patient_context.py              formats a Patient Profile into AI-prompt text,
                                  shared by every ai_*.py module
+body_metrics.py                 BMI math + unit conversion, shared by Patient
+                                 Profile and Fitness Coach
+exercise_library.py             curated exercises: muscle group, facility,
+                                 MET value, instructions, demo-video link
+muscle_diagram.py               hand-built SVG muscle-figure diagram builder
 styles.py                      custom CSS (gradient background, card/button
                                 styling) injected on every page
 pwa.py                          patches Streamlit's static files to make the
@@ -242,13 +263,13 @@ reference_ranges.py            reference ranges + flagging rules (admin-editable
 gemini_client.py                Gemini REST client: text generation, multimodal
                                  document extraction, retry/backoff/fallback
 ai_advice.py                     Bloodwork Analysis summaries + document extraction
-ai_wellness.py                    Wellness Coach diet/exercise plans
+ai_fitness.py                     Fitness Coach diet/exercise plans + weekly recap
 ai_conditions.py                  Conditions Tracker pattern + trend narrative
 ai_food.py                        Plate Score meal photo analysis + scoring
 ai_assistant.py                   site search bar + help chat
 services/patient_profile.py     Patient Profile service UI
 services/bloodwork_analysis.py   Bloodwork Analysis service UI
-services/wellness_coach.py       Wellness Coach service UI
+services/fitness_coach.py        Fitness Coach service UI (routine + AI plan)
 services/conditions_tracker.py   Conditions Tracker service UI (calendar)
 services/plate_score.py          Plate Score service UI
 .streamlit/config.toml           hides the Streamlit toolbar and raw error

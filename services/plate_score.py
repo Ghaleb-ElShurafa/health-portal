@@ -16,7 +16,9 @@ from ai_food import DISCLAIMER
 from services import patient_profile
 
 
-def _get_entries(user):
+def get_entries(user):
+    """Public helper other services (e.g. Fitness Coach, for calories-in vs
+    calories-out) also read this."""
     if user["auth_provider"] == "guest":
         return st.session_state.get("guest_meal_entries", [])
     return db.get_meal_entries_for_user(user["id"])
@@ -102,7 +104,7 @@ def render(user):
 
     st.divider()
     st.subheader("History")
-    entries = _get_entries(user)
+    entries = get_entries(user)
 
     if not entries:
         st.caption("No meals logged yet — take or upload a photo above to start tracking.")
