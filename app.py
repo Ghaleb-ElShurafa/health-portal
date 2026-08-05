@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import patient_profile, personal_doctor, plate_score, uc_tracker, wellness_coach
+from services import bloodwork_analysis, patient_profile, plate_score, uc_tracker, wellness_coach
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -181,25 +181,77 @@ def render_auth_gate():
                 st.rerun()
 
 
-def render_sidebar_help(user):
-    with st.sidebar:
-        st.header("🆘 Help & Support")
-        st.caption("Ask a question about using the site, or report a technical issue.")
+def render_site_menu(user):
+    with st.popover("☰ Menu", use_container_width=True):
+        tab_about, tab_tutorials, tab_qa, tab_issues = st.tabs(
+            ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "🚩 Technical Issues"]
+        )
 
-        for msg in st.session_state.help_chat:
-            with st.chat_message(msg["role"]):
-                st.write(msg["content"])
+        with tab_about:
+            st.markdown("**Health Services Portal**")
+            st.write(
+                "A multi-service health app: a Patient Profile screening personalizes "
+                "AI-powered bloodwork analysis, a wellness/diet coach, an ulcerative "
+                "colitis tracker, and a meal-photo calorie and health scorer."
+            )
+            st.caption(
+                "⚠️ This is an educational/portfolio project, not medical advice, and "
+                "not a substitute for care from a licensed professional."
+            )
 
-        prompt = st.chat_input("Ask for help...")
-        if prompt:
-            st.session_state.help_chat.append({"role": "user", "content": prompt})
-            with st.spinner("Thinking..."):
-                reply = ai_assistant.help_reply(st.session_state.help_chat)
-            st.session_state.help_chat.append({"role": "assistant", "content": reply})
-            st.rerun()
+        with tab_tutorials:
+            st.markdown("**Getting started**")
+            st.markdown(
+                "1. **Patient Profile** — start here. Add any conditions, medications, "
+                "supplements, and goals so every other service can personalize itself "
+                "to you.\n"
+                "2. **Bloodwork Analysis** — upload a photo or PDF of a lab report; AI "
+                "reads the values, you review/correct them, then save to see flagged "
+                "results and a summary.\n"
+                "3. **Wellness Coach** — answer a short questionnaire to get a diet + "
+                "exercise plan, automatically enriched by your bloodwork and UC Tracker "
+                "data if you have any.\n"
+                "4. **UC Tracker** — log daily flare status and foods eaten; after a few "
+                "entries, analyze patterns to spot possible triggers.\n"
+                "5. **Plate Score** — photograph or upload a meal photo for an instant "
+                "calorie/nutrition score, personalized to your profile."
+            )
 
-        st.divider()
-        with st.expander("🚩 Report a technical issue"):
+        with tab_qa:
+            with st.expander("Is this real medical advice?"):
+                st.write(
+                    "No. Every AI-generated summary is educational only. \"Consult a "
+                    "doctor\" flags are always computed with local rule-based logic, "
+                    "independent of the AI — always follow up with a real clinician."
+                )
+            with st.expander("Is my data private?"):
+                st.write(
+                    "Your data is stored to power your own account's features (trends, "
+                    "history, personalization) and isn't shared. Uploaded bloodwork/meal "
+                    "photos are read by the AI and not stored — only the extracted values "
+                    "are kept. Guest sessions aren't saved at all once you close the tab."
+                )
+            with st.expander("How does the AI work?"):
+                st.write(
+                    "Google's Gemini API reads documents/photos and writes explanatory "
+                    "text. Anything clinically significant (like a \"consult a doctor\" "
+                    "flag) is always decided by fixed rule-based logic, never by the AI."
+                )
+            with st.expander("What if I don't have a lab report to upload?"):
+                st.write(
+                    "Bloodwork Analysis requires an uploaded document, but every other "
+                    "service works without one — Wellness Coach falls back to its "
+                    "questionnaire, and UC Tracker/Plate Score/Patient Profile don't need "
+                    "bloodwork at all."
+                )
+            with st.expander("Do I need to create an account?"):
+                st.write(
+                    "No — use \"Continue as Guest\" to try the app with just a display "
+                    "name. Guest data only lasts for that browser session."
+                )
+
+        with tab_issues:
+            st.caption("Found a bug or something not working right? Let us know.")
             st.session_state.setdefault("issue_form_version", 0)
             iv = st.session_state.issue_form_version
             description = st.text_area("What went wrong?", key=f"issue_description_v{iv}")
@@ -212,6 +264,27 @@ def render_sidebar_help(user):
                     st.rerun()
                 else:
                     st.warning("Please describe the issue before submitting.")
+
+
+def render_sidebar_help(user):
+    with st.sidebar:
+        render_site_menu(user)
+        st.divider()
+
+        st.header("🆘 Help & Support")
+        st.caption("Ask a question about using the site.")
+
+        for msg in st.session_state.help_chat:
+            with st.chat_message(msg["role"]):
+                st.write(msg["content"])
+
+        prompt = st.chat_input("Ask for help...")
+        if prompt:
+            st.session_state.help_chat.append({"role": "user", "content": prompt})
+            with st.spinner("Thinking..."):
+                reply = ai_assistant.help_reply(st.session_state.help_chat)
+            st.session_state.help_chat.append({"role": "assistant", "content": reply})
+            st.rerun()
 
 
 def render_landing(user, as_admin_preview=False):
@@ -278,10 +351,10 @@ def render_landing(user, as_admin_preview=False):
     with row1[1]:
         with st.container(border=True):
             st.markdown('<div class="service-icon-badge badge-teal">🩺</div>', unsafe_allow_html=True)
-            st.markdown("#### Personal Doctor")
-            st.caption("Upload bloodwork documents, get AI-powered insights, and see trends over time.")
-            if st.button("Open", key="open_personal_doctor"):
-                st.session_state.current_service = "personal_doctor"
+            st.markdown("#### Bloodwork Analysis")
+            st.caption("Upload a lab report document, get AI-powered insights, and see trends over time.")
+            if st.button("Open", key="open_bloodwork_analysis"):
+                st.session_state.current_service = "bloodwork_analysis"
                 st.rerun()
     with row1[2]:
         with st.container(border=True):
@@ -445,8 +518,8 @@ else:
         render_admin(current_user)
     elif st.session_state.current_service == "patient_profile":
         patient_profile.render(current_user)
-    elif st.session_state.current_service == "personal_doctor":
-        personal_doctor.render(current_user, _cached_thresholds())
+    elif st.session_state.current_service == "bloodwork_analysis":
+        bloodwork_analysis.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "wellness_coach":
         wellness_coach.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "uc_tracker":

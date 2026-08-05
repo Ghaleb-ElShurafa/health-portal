@@ -82,13 +82,18 @@ def render(user):
             st.session_state.current_service = None
             st.rerun()
 
+    st.markdown(
+        "Track flares and food to spot ulcerative colitis trigger patterns. **To use this "
+        "service:** log a day's flare status and the foods you ate below — do this "
+        "regularly, since patterns only emerge after several logged days — then click "
+        "**Analyze My Patterns** once you have enough entries to see which foods "
+        "correlate with flare days."
+    )
     st.warning(
         "**Not medical advice.** This tool helps you spot patterns in your own logged "
         "data. It cannot diagnose triggers or confirm causation — always discuss "
         "suspected trigger foods with your gastroenterologist."
     )
-
-    st.markdown("Log each day's flare status and the foods you ate, to help spot patterns over time.")
 
     with st.form("uc_entry_form"):
         col1, col2 = st.columns(2)

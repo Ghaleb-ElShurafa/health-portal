@@ -3,13 +3,14 @@
 A multi-service health app built with Streamlit. Users sign up, land on a
 personalized dashboard, and open individual tools — currently **Patient
 Profile** (a general health screening — conditions, medications,
-supplements, goals — that personalizes every other service), **Personal
-Doctor** (upload bloodwork documents, AI-extracted and tracked over time),
-**Wellness Coach** (diet/exercise plans tailored to your profile + bloodwork
-+ UC Tracker data), **UC Tracker** (log flares and food to spot ulcerative
-colitis trigger patterns), and **Plate Score** (photograph a meal for an
-AI-scored calorie/nutrition breakdown, personalized to your profile). More
-services can be added as new cards on the landing page.
+supplements, goals — that personalizes every other service), **Bloodwork
+Analysis** (upload a lab report document — AI-extracted and tracked over
+time; no manual number entry), **Wellness Coach** (diet/exercise plans
+tailored to your profile + bloodwork + UC Tracker data), **UC Tracker** (log
+flares and food to spot ulcerative colitis trigger patterns), and **Plate
+Score** (photograph a meal for an AI-scored calorie/nutrition breakdown,
+personalized to your profile). More services can be added as new cards on
+the landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -29,20 +30,21 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   change, etc.) — with **None** / **Prefer not to say** available for
   anything a user would rather skip. This is the single source of truth
   every other AI-powered service reads from (via `patient_context.py`) to
-  personalize its output — e.g. a diabetes diagnosis makes Personal Doctor
-  and Plate Score sugar/carb-aware, a muscle-gain goal shapes Wellness
-  Coach's exercise plan and Plate Score's protein feedback, and any listed
-  medication gets factored into Personal Doctor's suggestions.
-- **Personal Doctor**: upload a photo or PDF of a lab report — Gemini reads
-  the document directly (no OCR step) and pre-fills a lipid panel,
-  glucose/HbA1c, and blood pressure form for you to review and edit before
-  saving. Every save is flagged against standard adult reference ranges
-  (NCEP ATP III cholesterol guidelines, ADA glucose/A1c thresholds, AHA blood
-  pressure categories), gets an AI-generated plain-language summary
-  personalized by your Patient Profile, and adds to trend charts across
-  every bloodwork entry on file over time.
+  personalize its output — e.g. a diabetes condition makes Bloodwork
+  Analysis and Plate Score sugar/carb-aware, a muscle-gain goal shapes
+  Wellness Coach's exercise plan and Plate Score's protein feedback, and any
+  listed medication gets factored into Bloodwork Analysis's suggestions.
+- **Bloodwork Analysis**: upload a photo or PDF of a lab report — there's no
+  manual-entry path, a document is required. Gemini reads it directly (no
+  OCR step) and pre-fills a lipid panel, glucose/HbA1c, and blood pressure
+  form for you to review and correct before saving. Every save is flagged
+  against standard adult reference ranges (NCEP ATP III cholesterol
+  guidelines, ADA glucose/A1c thresholds, AHA blood pressure categories),
+  gets an AI-generated plain-language summary personalized by your Patient
+  Profile, and adds to trend charts across every bloodwork entry on file
+  over time.
 - **Wellness Coach**: a diet + exercise plan personalized from your latest
-  Personal Doctor bloodwork, your Patient Profile, and your UC Tracker
+  Bloodwork Analysis entry, your Patient Profile, and your UC Tracker
   history (if any) — falls back to a short questionnaire if none of that
   exists yet. Recommends medical clearance before exercise whenever
   bloodwork has a "consult a doctor" flag.
@@ -60,9 +62,12 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   with a calories-over-time trend chart and today's running total. Photos
   themselves are never stored, only the extracted values.
 - **AI search bar**: ask anything on the landing page.
-- **Help & Support sidebar**: an AI chat that can help with genuinely
-  anything — site navigation, technical issues, or general questions — plus
-  a "report a technical issue" form that logs to the admin dashboard.
+- **☰ Menu** (top of the sidebar): About the app, a getting-started Tutorials
+  walkthrough of every service, a Q&A/FAQ section, and Technical Issues (a
+  bug-report form that logs to the admin dashboard).
+- **Help & Support sidebar**: an AI chat below the menu that can help with
+  genuinely anything — site navigation, technical issues, or general
+  questions.
 - **Admin dashboard** (for admin accounts): manage users (grant/revoke admin,
   delete), edit the clinical reference ranges used across services, post a
   site-wide announcement, review reported issues, and see a sign-in activity
@@ -229,13 +234,13 @@ pwa/                            PWA manifest, service worker, and icons
 reference_ranges.py            reference ranges + flagging rules (admin-editable)
 gemini_client.py                Gemini REST client: text generation, multimodal
                                  document extraction, retry/backoff/fallback
-ai_advice.py                     Personal Doctor bloodwork summaries + document extraction
+ai_advice.py                     Bloodwork Analysis summaries + document extraction
 ai_wellness.py                    Wellness Coach diet/exercise plans
 ai_uc.py                          UC Tracker pattern narrative
 ai_food.py                        Plate Score meal photo analysis + scoring
 ai_assistant.py                   site search bar + help chat
 services/patient_profile.py     Patient Profile service UI
-services/personal_doctor.py      Personal Doctor service UI
+services/bloodwork_analysis.py   Bloodwork Analysis service UI
 services/wellness_coach.py       Wellness Coach service UI
 services/uc_tracker.py           UC Tracker service UI
 services/plate_score.py          Plate Score service UI

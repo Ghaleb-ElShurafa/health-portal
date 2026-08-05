@@ -1,5 +1,5 @@
 """Wellness Coach service: diet + exercise guidance, personalized with the
-user's latest Personal Doctor bloodwork when available, otherwise based on
+user's latest Bloodwork Analysis results when available, otherwise based on
 a short questionnaire.
 """
 
@@ -55,6 +55,12 @@ def render(user, thresholds):
             st.session_state.current_service = None
             st.rerun()
 
+    st.markdown(
+        "Get a personalized diet and exercise plan. **To use this service:** answer the "
+        "short questionnaire below and click **Generate Plan** — it's automatically "
+        "personalized further using your latest Bloodwork Analysis results, your Patient "
+        "Profile, and your UC Tracker history, whenever any of those are on file."
+    )
     st.warning(
         "**Not medical or nutritional advice.** This tool offers general wellness "
         "suggestions only. Always consult a healthcare provider before starting a new "
@@ -65,7 +71,7 @@ def render(user, thresholds):
     bloodwork_summary, needs_clearance = ([], False)
     if entry:
         bloodwork_summary, needs_clearance = _summarize_entry(entry, thresholds)
-        st.info(f"Using your most recent Personal Doctor entry from **{entry['entry_date']}** to personalize this plan.")
+        st.info(f"Using your most recent Bloodwork Analysis entry from **{entry['entry_date']}** to personalize this plan.")
         with st.expander("View bloodwork used"):
             for line in bloodwork_summary:
                 st.markdown(line)
@@ -77,8 +83,8 @@ def render(user, thresholds):
             )
     else:
         st.caption(
-            "No Personal Doctor bloodwork on file yet — this plan will be based on your "
-            "answers below only. Log bloodwork in Personal Doctor for a more personalized plan."
+            "No Bloodwork Analysis entry on file yet — this plan will be based on your "
+            "answers below only. Log bloodwork in Bloodwork Analysis for a more personalized plan."
         )
 
     uc_summary = uc_tracker.get_recent_summary(user)

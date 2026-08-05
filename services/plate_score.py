@@ -40,6 +40,12 @@ def render(user):
             st.session_state.current_service = None
             st.rerun()
 
+    st.markdown(
+        "Get an AI-scored calorie and nutrition breakdown of a meal. **To use this "
+        "service:** take a photo or upload one below, click **Analyze Meal**, and it's "
+        "automatically logged with a health score, calorie/macro estimate, and a "
+        "personalized assessment — weighted by your Patient Profile if one is on file."
+    )
     st.warning(
         "**Not medical or nutritional advice.** Calorie and nutrient estimates from a photo "
         "are approximate. Always consult a doctor or registered dietitian for a diet plan "
