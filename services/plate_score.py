@@ -80,7 +80,9 @@ def render(user):
             entry_date = date.today().isoformat()
             if user["auth_provider"] == "guest":
                 st.session_state.setdefault("guest_meal_entries", [])
-                st.session_state.guest_meal_entries.append({"entry_date": entry_date, **result})
+                guest_entry = {**result, "entry_date": entry_date, "calories": result["estimated_calories"]}
+                del guest_entry["estimated_calories"]
+                st.session_state.guest_meal_entries.append(guest_entry)
             else:
                 db.add_meal_entry(
                     user["id"], entry_date, result["food_items"], result["estimated_calories"],
@@ -112,11 +114,11 @@ def render(user):
 
     history_df = pd.DataFrame(entries)
     today = date.today().isoformat()
-    today_calories = history_df[history_df["entry_date"] == today]["estimated_calories"].sum()
+    today_calories = history_df[history_df["entry_date"] == today]["calories"].sum()
     st.metric("Today's calories logged", f"{today_calories:.0f}")
 
-    fig = px.line(history_df, x="entry_date", y="estimated_calories", markers=True, title="Calories over time")
+    fig = px.line(history_df, x="entry_date", y="calories", markers=True, title="Calories over time")
     st.plotly_chart(fig, use_container_width=True)
 
-    display_df = history_df[["entry_date", "food_items", "estimated_calories", "protein_g", "carbs_g", "fat_g", "health_score"]]
+    display_df = history_df[["entry_date", "food_items", "calories", "protein_g", "carbs_g", "fat_g", "health_score"]]
     st.dataframe(display_df.sort_values("entry_date", ascending=False), use_container_width=True)

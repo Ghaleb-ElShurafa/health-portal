@@ -191,8 +191,17 @@ def render_auth_gate():
                 st.rerun()
 
 
+SERVICE_NAV = [
+    ("📋 Patient Profile", "patient_profile"),
+    ("🩺 Bloodwork Analysis", "bloodwork_analysis"),
+    ("🏋️ Fitness Coach", "fitness_coach"),
+    ("📅 Conditions Tracker", "conditions_tracker"),
+    ("🍽️ Plate Score", "plate_score"),
+]
+
+
 def render_site_menu(user):
-    with st.popover("☰ Menu", use_container_width=True):
+    with st.popover("Menu", icon=":material/menu:", use_container_width=True):
         tab_about, tab_tutorials, tab_qa, tab_issues = st.tabs(
             ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "🚩 Technical Issues"]
         )
@@ -276,6 +285,13 @@ def render_site_menu(user):
                     st.rerun()
                 else:
                     st.warning("Please describe the issue before submitting.")
+
+        st.divider()
+        st.markdown("**🧭 Jump to a service**")
+        for label, service_key in SERVICE_NAV:
+            if st.button(label, key=f"nav_{service_key}", use_container_width=True):
+                st.session_state.current_service = service_key
+                st.rerun()
 
 
 def render_sidebar_help(user):
