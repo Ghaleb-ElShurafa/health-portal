@@ -219,6 +219,31 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tracked_conditions (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id),
+            conditions TEXT NOT NULL DEFAULT '[]',
+            other_condition TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS condition_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            condition TEXT NOT NULL,
+            entry_date TEXT NOT NULL,
+            symptom_occurred INTEGER NOT NULL DEFAULT 0,
+            severity TEXT,
+            triggers TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -394,26 +419,6 @@ def clear_remember_token(user_id):
     conn.close()
 
 
-def add_uc_entry(user_id, entry_date, flared, severity, foods, notes=""):
-    conn = _connect()
-    conn.execute(
-        "INSERT INTO uc_entries (user_id, entry_date, flared, severity, foods, notes) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, entry_date, 1 if flared else 0, severity, foods, notes),
-    )
-    conn.commit()
-    conn.close()
-
-
-def get_uc_entries_for_user(user_id):
-    conn = _connect()
-    rows = conn.execute(
-        "SELECT * FROM uc_entries WHERE user_id = ? ORDER BY entry_date ASC", (user_id,)
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
-
 def log_activity(email, display_name, auth_provider):
     conn = _connect()
     conn.execute(
@@ -484,3 +489,60 @@ def set_patient_profile(user_id, conditions, other_condition, medications, suppl
     )
     conn.commit()
     conn.close()
+
+
+EMPTY_TRACKED_CONDITIONS = {"conditions": [], "other_condition": ""}
+
+
+def get_tracked_conditions(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM tracked_conditions WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row:
+        return dict(EMPTY_TRACKED_CONDITIONS)
+    row = dict(row)
+    return {"conditions": json.loads(row["conditions"]), "other_condition": row["other_condition"] or ""}
+
+
+def set_tracked_conditions(user_id, conditions, other_condition):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO tracked_conditions (user_id, conditions, other_condition, updated_at) "
+        "VALUES (?, ?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(user_id) DO UPDATE SET conditions = excluded.conditions, "
+        "other_condition = excluded.other_condition, updated_at = CURRENT_TIMESTAMP",
+        (user_id, json.dumps(conditions), other_condition),
+    )
+    conn.commit()
+    conn.close()
+
+
+def add_condition_entry(user_id, condition, entry_date, symptom_occurred, severity, triggers, notes):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO condition_entries (user_id, condition, entry_date, symptom_occurred, severity, triggers, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, condition, entry_date, 1 if symptom_occurred else 0, severity, triggers, notes),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_condition_entry(entry_id, symptom_occurred, severity, triggers, notes):
+    conn = _connect()
+    conn.execute(
+        "UPDATE condition_entries SET symptom_occurred = ?, severity = ?, triggers = ?, notes = ? WHERE id = ?",
+        (1 if symptom_occurred else 0, severity, triggers, notes, entry_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_condition_entries(user_id, condition):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM condition_entries WHERE user_id = ? AND condition = ? ORDER BY entry_date ASC, id ASC",
+        (user_id, condition),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

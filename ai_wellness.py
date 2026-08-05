@@ -44,14 +44,15 @@ def _build_prompt(profile, bloodwork_summary, needs_clearance, questionnaire, uc
 
     if uc_summary:
         lines.append("")
-        lines.append("UC Tracker data (their own logged flare/food history):")
+        lines.append("Conditions Tracker data (their own logged symptom/trigger history):")
         lines.append(uc_summary)
 
     lines.append("")
     lines.append(
         "Write a short diet plan (general food/nutrition guidance, not a strict meal-by-meal "
         "plan) and a short exercise plan (type, frequency, intensity), tailored to the "
-        "questionnaire, patient profile (if any), and any bloodwork/UC Tracker findings above. "
+        "questionnaire, patient profile (if any), and any bloodwork/Conditions Tracker "
+        "findings above. "
         "Do not diagnose any condition. "
         + (
             "At least one bloodwork result needs medical attention — recommend the user get "

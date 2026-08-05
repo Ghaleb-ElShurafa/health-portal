@@ -6,11 +6,11 @@ Profile** (a general health screening — conditions, medications,
 supplements, goals — that personalizes every other service), **Bloodwork
 Analysis** (upload a lab report document — AI-extracted and tracked over
 time; no manual number entry), **Wellness Coach** (diet/exercise plans
-tailored to your profile + bloodwork + UC Tracker data), **UC Tracker** (log
-flares and food to spot ulcerative colitis trigger patterns), and **Plate
-Score** (photograph a meal for an AI-scored calorie/nutrition breakdown,
-personalized to your profile). More services can be added as new cards on
-the landing page.
+tailored to your profile + bloodwork + Conditions Tracker data), **Conditions
+Tracker** (pick any condition to monitor, log symptoms on a calendar, and get
+an AI trend/trigger summary), and **Plate Score** (photograph a meal for an
+AI-scored calorie/nutrition breakdown, personalized to your profile). More
+services can be added as new cards on the landing page.
 
 **⚠️ Not medical advice.** This is an educational/portfolio project. It does
 not diagnose or treat any condition. "Consult a doctor" flags are always
@@ -44,15 +44,21 @@ the AI — the model only writes explanatory text, never decides what's urgent.
   Profile, and adds to trend charts across every bloodwork entry on file
   over time.
 - **Wellness Coach**: a diet + exercise plan personalized from your latest
-  Bloodwork Analysis entry, your Patient Profile, and your UC Tracker
+  Bloodwork Analysis entry, your Patient Profile, and your Conditions Tracker
   history (if any) — falls back to a short questionnaire if none of that
   exists yet. Recommends medical clearance before exercise whenever
   bloodwork has a "consult a doctor" flag.
-- **UC Tracker**: log each day's flare status (yes/no + severity) and the
-  foods you ate. The app computes a food-vs-flare-day correlation table
-  (rule-based, not AI) and an AI narrative highlighting likely trigger foods,
-  personalized by your Patient Profile — correlation, not diagnosis, always
-  framed as something to discuss with a gastroenterologist.
+- **Conditions Tracker**: pick which condition(s) to actively monitor via the
+  same fuzzy-searchable dropdown as Patient Profile (plus a custom "other
+  condition" field), then click any day on a visual calendar to log whether
+  symptoms occurred, severity, and possible triggers — logged days appear
+  directly on the calendar, color-coded by severity, so history is visible
+  at a glance. The app computes a rule-based trend (comparing symptom rates
+  across the two halves of your logged history) and a trigger-correlation
+  table, then an AI narrative states whether things look improving,
+  worsening, or stable and highlights standout triggers, personalized by
+  your Patient Profile — correlation, not diagnosis, always framed as
+  something to discuss with a doctor.
 - **Plate Score**: take a photo (camera or upload, works on phone and
   desktop) of a meal — Gemini identifies the food, estimates calories and
   macros, and returns a 1-10 health score with a short written assessment,
@@ -220,7 +226,8 @@ app.py                        Portal shell: auth gate, landing page, sidebar
                                help chat, admin dashboard, routing between services
 auth.py                        password hashing/validation, Google OAuth flow,
                                 "keep me logged in" tokens
-db.py                          storage: users, patient profiles, entries, UC
+db.py                          storage: users, patient profiles, tracked
+                                conditions, condition entries, bloodwork
                                 entries, meal entries, settings, issues,
                                 activity log — local SQLite by default, or
                                 Turso if configured
@@ -236,13 +243,13 @@ gemini_client.py                Gemini REST client: text generation, multimodal
                                  document extraction, retry/backoff/fallback
 ai_advice.py                     Bloodwork Analysis summaries + document extraction
 ai_wellness.py                    Wellness Coach diet/exercise plans
-ai_uc.py                          UC Tracker pattern narrative
+ai_conditions.py                  Conditions Tracker pattern + trend narrative
 ai_food.py                        Plate Score meal photo analysis + scoring
 ai_assistant.py                   site search bar + help chat
 services/patient_profile.py     Patient Profile service UI
 services/bloodwork_analysis.py   Bloodwork Analysis service UI
 services/wellness_coach.py       Wellness Coach service UI
-services/uc_tracker.py           UC Tracker service UI
+services/conditions_tracker.py   Conditions Tracker service UI (calendar)
 services/plate_score.py          Plate Score service UI
 .streamlit/config.toml           hides the Streamlit toolbar and raw error
                                   tracebacks from all users

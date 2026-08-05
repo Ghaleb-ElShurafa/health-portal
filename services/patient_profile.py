@@ -1,6 +1,6 @@
 """Patient Profile service: a general health-screening intake — conditions,
 medications, supplements, and goals — that personalizes every other service
-in the portal (Bloodwork Analysis, Wellness Coach, UC Tracker, Plate Score).
+in the portal (Bloodwork Analysis, Wellness Coach, Conditions Tracker, Plate Score).
 """
 
 import streamlit as st
@@ -172,7 +172,7 @@ def render(user):
     st.markdown(
         "A general health screening. Nothing here is required — but the more you share, "
         "the more personalized every other service (Bloodwork Analysis, Wellness Coach, "
-        "UC Tracker, and Plate Score) can be for you."
+        "Conditions Tracker, and Plate Score) can be for you."
     )
     st.caption(
         "This is not medical advice and isn't a substitute for a medical history taken by a "

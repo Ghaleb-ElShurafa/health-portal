@@ -8,7 +8,7 @@ import streamlit as st
 import ai_wellness
 import db
 import reference_ranges as rr
-from services import patient_profile, uc_tracker
+from services import conditions_tracker, patient_profile
 
 
 def _latest_entry(user):
@@ -59,7 +59,7 @@ def render(user, thresholds):
         "Get a personalized diet and exercise plan. **To use this service:** answer the "
         "short questionnaire below and click **Generate Plan** — it's automatically "
         "personalized further using your latest Bloodwork Analysis results, your Patient "
-        "Profile, and your UC Tracker history, whenever any of those are on file."
+        "Profile, and your Conditions Tracker history, whenever any of those are on file."
     )
     st.warning(
         "**Not medical or nutritional advice.** This tool offers general wellness "
@@ -87,9 +87,9 @@ def render(user, thresholds):
             "answers below only. Log bloodwork in Bloodwork Analysis for a more personalized plan."
         )
 
-    uc_summary = uc_tracker.get_recent_summary(user)
+    uc_summary = conditions_tracker.get_recent_summary(user)
     if uc_summary:
-        st.info(f"Also factoring in your UC Tracker data: {uc_summary}")
+        st.info(f"Also factoring in your Conditions Tracker data: {uc_summary}")
 
     health_profile = patient_profile.get_profile(user)
     profile_summary = patient_profile.summary_line(health_profile)

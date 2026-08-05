@@ -5,3 +5,4 @@ python-dotenv==1.2.2
 bcrypt==5.0.0
 requests==2.34.2
 libsql-client==0.3.1
+streamlit-calendar==1.4.0

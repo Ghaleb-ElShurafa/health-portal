@@ -24,11 +24,15 @@ services as cards. There are currently five services:
   file over time.
 - "Wellness Coach": generates a diet and exercise plan personalized from a
   user's latest Bloodwork Analysis results, their Patient Profile, and their
-  UC Tracker history (if any), always recommending medical clearance before
-  exercise if any bloodwork result needs a doctor.
-- "UC Tracker": for users tracking ulcerative colitis, logs daily flares
-  (yes/no, severity) and foods eaten, then analyzes patterns to help spot
-  which foods correlate with flares.
+  Conditions Tracker history (if any), always recommending medical clearance
+  before exercise if any bloodwork result needs a doctor.
+- "Conditions Tracker": users pick one or more conditions to monitor
+  (searchable dropdown, plus a custom "other condition" option, same pattern
+  as Patient Profile), then log symptoms on a visual calendar — clicking any
+  day logs severity and possible triggers for that day, and logged days show
+  directly on the calendar so users can review their history at a glance. An
+  AI-generated summary reports whether things look like they're improving,
+  worsening, or staying stable, plus any triggers that stand out.
 - "Plate Score": users photograph or upload a photo of a meal (camera or
   file, phone or desktop); AI identifies the food, estimates calories and
   macros, and gives a 1-10 health score with a written assessment,

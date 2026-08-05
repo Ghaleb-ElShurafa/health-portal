@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import bloodwork_analysis, patient_profile, plate_score, uc_tracker, wellness_coach
+from services import bloodwork_analysis, conditions_tracker, patient_profile, plate_score, wellness_coach
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -22,8 +22,10 @@ if "auth_user" not in st.session_state:
     st.session_state.auth_user = None
 if "guest_entries" not in st.session_state:
     st.session_state.guest_entries = []
-if "guest_uc_entries" not in st.session_state:
-    st.session_state.guest_uc_entries = []
+if "guest_tracked_conditions" not in st.session_state:
+    st.session_state.guest_tracked_conditions = dict(db.EMPTY_TRACKED_CONDITIONS)
+if "guest_condition_entries" not in st.session_state:
+    st.session_state.guest_condition_entries = {}
 if "guest_meal_entries" not in st.session_state:
     st.session_state.guest_meal_entries = []
 if "guest_patient_profile" not in st.session_state:
@@ -72,7 +74,8 @@ def _log_out(user):
     _clear_remember_cookie()
     st.session_state.auth_user = None
     st.session_state.guest_entries = []
-    st.session_state.guest_uc_entries = []
+    st.session_state.guest_tracked_conditions = dict(db.EMPTY_TRACKED_CONDITIONS)
+    st.session_state.guest_condition_entries = {}
     st.session_state.guest_meal_entries = []
     st.session_state.guest_patient_profile = dict(db.EMPTY_PATIENT_PROFILE)
     st.session_state.pop("pp_editing", None)
@@ -191,8 +194,8 @@ def render_site_menu(user):
             st.markdown("**Health Services Portal**")
             st.write(
                 "A multi-service health app: a Patient Profile screening personalizes "
-                "AI-powered bloodwork analysis, a wellness/diet coach, an ulcerative "
-                "colitis tracker, and a meal-photo calorie and health scorer."
+                "AI-powered bloodwork analysis, a wellness/diet coach, a calendar-based "
+                "conditions tracker, and a meal-photo calorie and health scorer."
             )
             st.caption(
                 "⚠️ This is an educational/portfolio project, not medical advice, and "
@@ -209,10 +212,11 @@ def render_site_menu(user):
                 "reads the values, you review/correct them, then save to see flagged "
                 "results and a summary.\n"
                 "3. **Wellness Coach** — answer a short questionnaire to get a diet + "
-                "exercise plan, automatically enriched by your bloodwork and UC Tracker "
-                "data if you have any.\n"
-                "4. **UC Tracker** — log daily flare status and foods eaten; after a few "
-                "entries, analyze patterns to spot possible triggers.\n"
+                "exercise plan, automatically enriched by your bloodwork and Conditions "
+                "Tracker data if you have any.\n"
+                "4. **Conditions Tracker** — pick a condition to monitor, then click any "
+                "day on the calendar to log symptoms; after a few entries, analyze "
+                "patterns to spot trends and possible triggers.\n"
                 "5. **Plate Score** — photograph or upload a meal photo for an instant "
                 "calorie/nutrition score, personalized to your profile."
             )
@@ -241,8 +245,8 @@ def render_site_menu(user):
                 st.write(
                     "Bloodwork Analysis requires an uploaded document, but every other "
                     "service works without one — Wellness Coach falls back to its "
-                    "questionnaire, and UC Tracker/Plate Score/Patient Profile don't need "
-                    "bloodwork at all."
+                    "questionnaire, and Conditions Tracker/Plate Score/Patient Profile "
+                    "don't need bloodwork at all."
                 )
             with st.expander("Do I need to create an account?"):
                 st.write(
@@ -368,11 +372,11 @@ def render_landing(user, as_admin_preview=False):
     row2 = st.columns(3)
     with row2[0]:
         with st.container(border=True):
-            st.markdown('<div class="service-icon-badge badge-orange">🔥</div>', unsafe_allow_html=True)
-            st.markdown("#### UC Tracker")
-            st.caption("Log flares and food to spot patterns for ulcerative colitis.")
-            if st.button("Open", key="open_uc_tracker"):
-                st.session_state.current_service = "uc_tracker"
+            st.markdown('<div class="service-icon-badge badge-orange">📅</div>', unsafe_allow_html=True)
+            st.markdown("#### Conditions Tracker")
+            st.caption("Log symptoms on a calendar for any condition you're monitoring, and get an AI trend summary.")
+            if st.button("Open", key="open_conditions_tracker"):
+                st.session_state.current_service = "conditions_tracker"
                 st.rerun()
     with row2[1]:
         with st.container(border=True):
@@ -522,8 +526,8 @@ else:
         bloodwork_analysis.render(current_user, _cached_thresholds())
     elif st.session_state.current_service == "wellness_coach":
         wellness_coach.render(current_user, _cached_thresholds())
-    elif st.session_state.current_service == "uc_tracker":
-        uc_tracker.render(current_user)
+    elif st.session_state.current_service == "conditions_tracker":
+        conditions_tracker.render(current_user)
     elif st.session_state.current_service == "plate_score":
         plate_score.render(current_user)
     else:
