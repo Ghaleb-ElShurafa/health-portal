@@ -11,7 +11,15 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import bloodwork_analysis, community_hub, conditions_tracker, fitness_coach, patient_profile, plate_score
+from services import (
+    bloodwork_analysis,
+    community_hub,
+    conditions_tracker,
+    fitness_coach,
+    patient_profile,
+    plate_score,
+    video_tutorial,
+)
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -231,8 +239,8 @@ def render_site_menu(user):
     no second "Menu" click required."""
     st.markdown("**☰ Menu**")
 
-    tab_qa, tab_tutorials, tab_settings, tab_about, tab_review, tab_issues = st.tabs(
-        ["❓ Q&A", "🎓 Tutorials", "⚙️ Settings", "ℹ️ About", "⭐ Leave a Review", "🚩 Technical Issues"]
+    tab_qa, tab_tutorials, tab_video, tab_settings, tab_about, tab_review, tab_issues = st.tabs(
+        ["❓ Q&A", "🎓 Tutorials", "🎬 Video Tutorial", "⚙️ Settings", "ℹ️ About", "⭐ Leave a Review", "🚩 Technical Issues"]
     )
 
     with tab_about:
@@ -266,6 +274,9 @@ def render_site_menu(user):
             "5. **Plate Score** — photograph or upload a meal photo for an instant "
             "calorie/nutrition score, personalized to your profile."
         )
+
+    with tab_video:
+        video_tutorial.render_teaser(user)
 
     with tab_qa:
         with st.expander("Is this real medical advice?"):
@@ -804,5 +815,7 @@ else:
         plate_score.render(current_user)
     elif st.session_state.current_service == "community_hub":
         community_hub.render(current_user)
+    elif st.session_state.current_service == "video_tutorial":
+        video_tutorial.render_page(current_user)
     else:
         render_landing(current_user, as_admin_preview=current_user.get("is_admin", False))
