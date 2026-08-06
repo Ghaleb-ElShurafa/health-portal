@@ -41,7 +41,10 @@ div[data-testid="stVerticalBlock"] > div[class*="st-key-open_"] {
 div[data-testid="stVerticalBlock"] > div[class*="st-key-open_"] button {
     width: 100%;
     height: 100%;
-    opacity: 0;
+    /* iOS Safari doesn't reliably dispatch tap events to fully transparent
+       (opacity: 0) elements -- a near-zero value keeps it invisible to the
+       eye while staying tappable. */
+    opacity: 0.01;
     cursor: pointer;
 }
 
