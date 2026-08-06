@@ -295,6 +295,21 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id),
+            email TEXT NOT NULL,
+            display_name TEXT,
+            feedback TEXT NOT NULL,
+            admin_reply TEXT,
+            replied_at TEXT,
+            user_seen_reply INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -694,3 +709,56 @@ def get_workout_log(user_id):
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+def create_review(user_id, email, display_name, feedback):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO reviews (user_id, email, display_name, feedback) VALUES (?, ?, ?, ?)",
+        (user_id, email, display_name, feedback),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_reviews():
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM reviews ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_reviews_for_user(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT * FROM reviews WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def reply_to_review(review_id, reply_text):
+    conn = _connect()
+    conn.execute(
+        "UPDATE reviews SET admin_reply = ?, replied_at = CURRENT_TIMESTAMP, user_seen_reply = 0 WHERE id = ?",
+        (reply_text, review_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def mark_review_seen(review_id):
+    conn = _connect()
+    conn.execute("UPDATE reviews SET user_seen_reply = 1 WHERE id = ?", (review_id,))
+    conn.commit()
+    conn.close()
+
+
+def count_unseen_replies(user_id):
+    conn = _connect()
+    row = conn.execute(
+        "SELECT COUNT(*) AS c FROM reviews WHERE user_id = ? AND admin_reply IS NOT NULL AND user_seen_reply = 0",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row)["c"] if row else 0

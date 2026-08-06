@@ -211,8 +211,8 @@ def render_site_menu(user):
             st.session_state.current_service = service_key
             st.rerun()
 
-    tab_about, tab_tutorials, tab_qa, tab_issues = st.tabs(
-        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "🚩 Technical Issues"]
+    tab_about, tab_tutorials, tab_qa, tab_review, tab_issues = st.tabs(
+        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "⭐ Leave a Review", "🚩 Technical Issues"]
     )
 
     with tab_about:
@@ -280,6 +280,21 @@ def render_site_menu(user):
                 "name. Guest data only lasts for that browser session."
             )
 
+    with tab_review:
+        st.caption("Tell us what you think — the team reads every review and can reply to you directly.")
+        st.session_state.setdefault("review_form_version", 0)
+        rv = st.session_state.review_form_version
+        feedback = st.text_area("Your feedback", key=f"review_feedback_v{rv}", placeholder="What do you like? What could be better?")
+        if st.button("Submit Review", key="submit_review"):
+            if feedback.strip():
+                display_name = user.get("first_name") or user["email"]
+                db.create_review(user.get("id"), user["email"], display_name, feedback.strip())
+                st.session_state.review_form_version += 1
+                st.success("Thanks for the feedback! Check Messages (top of the home screen) if the team replies.")
+                st.rerun()
+            else:
+                st.warning("Please write something before submitting.")
+
     with tab_issues:
         st.caption("Found a bug or something not working right? Let us know.")
         st.session_state.setdefault("issue_form_version", 0)
@@ -317,6 +332,38 @@ def render_sidebar_help(user):
             st.rerun()
 
 
+def render_messages_button(user):
+    if user["auth_provider"] == "guest":
+        with st.popover("💬", help="Messages"):
+            st.markdown("**Messages**")
+            st.caption(
+                "Messages aren't available for guest sessions. Sign up for an "
+                "account to receive replies from our team on any review you leave."
+            )
+        return
+
+    unseen = db.count_unseen_replies(user["id"])
+    label = f"💬 {unseen}" if unseen else "💬"
+    with st.popover(label, help="Messages"):
+        st.markdown("**Messages**")
+        reviews = db.get_reviews_for_user(user["id"])
+        replied = [r for r in reviews if r["admin_reply"]]
+        if not replied:
+            st.caption("No replies yet. Leave a review from the Menu and the team may respond here.")
+        else:
+            for r in replied:
+                with st.container(border=True):
+                    st.caption(f"Your review ({r['created_at']}): {r['feedback']}")
+                    st.markdown(f"**Team reply:** {r['admin_reply']}")
+                    st.caption(r["replied_at"])
+            if unseen:
+                if st.button("Mark all as read", key="mark_all_read", use_container_width=True):
+                    for r in replied:
+                        if not r["user_seen_reply"]:
+                            db.mark_review_seen(r["id"])
+                    st.rerun()
+
+
 def render_landing(user, as_admin_preview=False):
     display_name = user.get("first_name") or ("Guest" if user["auth_provider"] == "guest" else user["email"])
 
@@ -328,12 +375,16 @@ def render_landing(user, as_admin_preview=False):
             subtitle += " (guest session)"
         st.markdown(f'<p class="hero-subtitle">{subtitle}</p>', unsafe_allow_html=True)
     with top_right:
-        if as_admin_preview:
-            if st.button("Back to Admin"):
-                st.session_state.view_as_user = False
-                st.rerun()
-        elif st.button("Log out"):
-            _log_out(user)
+        msg_col, action_col = st.columns([1, 1])
+        with msg_col:
+            render_messages_button(user)
+        with action_col:
+            if as_admin_preview:
+                if st.button("Back to Admin"):
+                    st.session_state.view_as_user = False
+                    st.rerun()
+            elif st.button("Log out"):
+                _log_out(user)
 
     profile_summary = patient_profile.summary_line(patient_profile.get_profile(user))
     if profile_summary:
@@ -435,8 +486,8 @@ def render_admin(user):
         if st.button("Log out"):
             _log_out(user)
 
-    tab_users, tab_ranges, tab_announcement, tab_issues, tab_activity = st.tabs(
-        ["Users", "Reference Ranges", "Announcement", "Issues", "Activity"]
+    tab_users, tab_ranges, tab_announcement, tab_reviews, tab_issues, tab_activity = st.tabs(
+        ["Users", "Reference Ranges", "Announcement", "Reviews", "Issues", "Activity"]
     )
 
     with tab_users:
@@ -508,6 +559,33 @@ def render_admin(user):
             _cached_announcement.clear()
             st.success("Announcement saved.")
             st.rerun()
+
+    with tab_reviews:
+        st.subheader("User reviews")
+        st.caption("Submitted via the \"Leave a Review\" tab in the sidebar menu. Replies show up in the user's Messages panel.")
+        reviews = db.list_reviews()
+        if not reviews:
+            st.caption("No reviews submitted yet.")
+        else:
+            st.session_state.setdefault("review_reply_version", {})
+            for review in reviews:
+                status_icon = "🟢" if review["admin_reply"] else "🔴"
+                who = review["display_name"] or review["email"]
+                with st.expander(f"{status_icon} #{review['id']} — {who} — {review['created_at']}"):
+                    st.markdown(f"**Feedback:** {review['feedback']}")
+                    st.caption(f"Contact: {review['email']}")
+                    rv = st.session_state.review_reply_version.get(review["id"], 0)
+                    reply_text = st.text_area(
+                        "Reply", value=review["admin_reply"] or "", key=f"reply_{review['id']}_v{rv}",
+                    )
+                    if st.button("Send Reply", key=f"send_reply_{review['id']}"):
+                        if reply_text.strip():
+                            db.reply_to_review(review["id"], reply_text.strip())
+                            st.session_state.review_reply_version[review["id"]] = rv + 1
+                            st.success("Reply sent.")
+                            st.rerun()
+                        else:
+                            st.warning("Write a reply before sending.")
 
     with tab_issues:
         st.subheader("Reported technical issues")
