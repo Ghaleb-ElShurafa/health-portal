@@ -80,6 +80,8 @@ def _public_user(row):
         "last_name": row["last_name"],
         "age": row["age"],
         "country": row["country"],
+        "dark_mode": bool(row["dark_mode"]) if row["dark_mode"] is not None else False,
+        "language": row["language"] or "English",
     }
 
 
@@ -212,3 +214,45 @@ def get_user_by_remember_token(token):
 
 def clear_remember_token(user_id):
     db.clear_remember_token(user_id)
+
+
+def change_password(user_id, current_password, new_password):
+    import bcrypt
+
+    user = db.get_user_by_id(user_id)
+    if not user or user["auth_provider"] != "password":
+        return False, "Password changes aren't available for this sign-in method."
+    if not bcrypt.checkpw(current_password.encode(), user["password_hash"].encode()):
+        return False, "Current password is incorrect."
+    ok, message = validate_password_strength(new_password)
+    if not ok:
+        return False, message
+    new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    db.update_password_hash(user_id, new_hash)
+    return True, ""
+
+
+def change_email(user_id, current_password, new_email):
+    import bcrypt
+
+    user = db.get_user_by_id(user_id)
+    if not user or user["auth_provider"] != "password":
+        return False, "Email changes aren't available for this sign-in method."
+    if not bcrypt.checkpw(current_password.encode(), user["password_hash"].encode()):
+        return False, "Current password is incorrect."
+    new_email = new_email.strip()
+    if not new_email:
+        return False, "Enter a new email address."
+    existing = db.get_user_by_email(new_email)
+    if existing and existing["id"] != user_id:
+        return False, "An account with that email already exists."
+    db.update_email(user_id, new_email)
+    return True, ""
+
+
+def change_display_name(user_id, first_name, last_name):
+    first_name, last_name = first_name.strip(), last_name.strip()
+    if not first_name or not last_name:
+        return False, "First and last name are required."
+    db.update_display_name(user_id, first_name, last_name)
+    return True, ""

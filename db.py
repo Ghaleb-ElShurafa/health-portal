@@ -127,6 +127,8 @@ def init_db():
         "remember_token_expires": "ALTER TABLE users ADD COLUMN remember_token_expires TEXT",
         "diagnosis": "ALTER TABLE users ADD COLUMN diagnosis TEXT",
         "goal": "ALTER TABLE users ADD COLUMN goal TEXT",
+        "dark_mode": "ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0",
+        "language": "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'English'",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
@@ -348,6 +350,46 @@ def get_user_by_google_sub(google_sub):
     row = conn.execute("SELECT * FROM users WHERE google_sub = ?", (google_sub,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_user_by_id(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_password_hash(user_id, password_hash):
+    conn = _connect()
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_email(user_id, new_email):
+    conn = _connect()
+    conn.execute("UPDATE users SET email = ? WHERE id = ?", (new_email, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_display_name(user_id, first_name, last_name):
+    conn = _connect()
+    conn.execute(
+        "UPDATE users SET first_name = ?, last_name = ? WHERE id = ?", (first_name, last_name, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_user_preferences(user_id, dark_mode, language):
+    conn = _connect()
+    conn.execute(
+        "UPDATE users SET dark_mode = ?, language = ? WHERE id = ?",
+        (1 if dark_mode else 0, language, user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def list_users():

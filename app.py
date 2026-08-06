@@ -15,7 +15,6 @@ from services import bloodwork_analysis, conditions_tracker, fitness_coach, pati
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
-styles.inject()
 db.init_db()
 
 if "auth_user" not in st.session_state:
@@ -211,8 +210,8 @@ def render_site_menu(user):
             st.session_state.current_service = service_key
             st.rerun()
 
-    tab_about, tab_tutorials, tab_qa, tab_review, tab_issues = st.tabs(
-        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "⭐ Leave a Review", "🚩 Technical Issues"]
+    tab_about, tab_tutorials, tab_qa, tab_review, tab_issues, tab_settings = st.tabs(
+        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "⭐ Leave a Review", "🚩 Technical Issues", "⚙️ Settings"]
     )
 
     with tab_about:
@@ -309,6 +308,95 @@ def render_site_menu(user):
                 st.rerun()
             else:
                 st.warning("Please describe the issue before submitting.")
+
+    with tab_settings:
+        is_guest = user["auth_provider"] == "guest"
+
+        st.markdown("**Appearance**")
+        current_dark = bool(user.get("dark_mode"))
+        theme_choice = st.radio(
+            "Theme", ["Light", "Dark"], index=1 if current_dark else 0,
+            key="settings_theme", horizontal=True,
+        )
+        new_dark = theme_choice == "Dark"
+        if new_dark != current_dark:
+            user["dark_mode"] = new_dark
+            if not is_guest:
+                db.update_user_preferences(user["id"], new_dark, user.get("language", "English"))
+            st.rerun()
+
+        st.markdown("**Language**")
+        languages = ["English", "Arabic", "French"]
+        current_lang = user.get("language") or "English"
+        lang_choice = st.selectbox(
+            "Language", languages, index=languages.index(current_lang), key="settings_language",
+        )
+        if lang_choice != current_lang:
+            user["language"] = lang_choice
+            if not is_guest:
+                db.update_user_preferences(user["id"], bool(user.get("dark_mode")), lang_choice)
+            st.rerun()
+        if lang_choice != "English":
+            st.caption(
+                "Arabic and French are on the way — the app will keep showing English "
+                "under the hood until full translation ships."
+            )
+
+        if is_guest:
+            st.divider()
+            st.caption("Sign up for an account to manage account info and keep these preferences.")
+        elif user["auth_provider"] != "password":
+            st.divider()
+            st.caption("Account info is managed by Google for sign-ins via Google — nothing to change here.")
+        else:
+            st.divider()
+            st.markdown("**Account info**")
+            st.caption(f"Signed in as {user['email']}")
+
+            st.session_state.setdefault("settings_name_version", 0)
+            nv = st.session_state.settings_name_version
+            with st.form(f"settings_name_form_v{nv}"):
+                first = st.text_input("First name", value=user.get("first_name") or "", key=f"settings_first_v{nv}")
+                last = st.text_input("Last name", value=user.get("last_name") or "", key=f"settings_last_v{nv}")
+                if st.form_submit_button("Update name"):
+                    ok, msg = auth.change_display_name(user["id"], first, last)
+                    if ok:
+                        user["first_name"], user["last_name"] = first.strip(), last.strip()
+                        st.session_state.settings_name_version += 1
+                        st.success("Name updated.")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            st.session_state.setdefault("settings_email_version", 0)
+            ev = st.session_state.settings_email_version
+            with st.form(f"settings_email_form_v{ev}"):
+                new_email = st.text_input("New email", key=f"settings_email_v{ev}")
+                email_pw = st.text_input("Current password", type="password", key=f"settings_email_pw_v{ev}")
+                if st.form_submit_button("Update email"):
+                    ok, msg = auth.change_email(user["id"], email_pw, new_email)
+                    if ok:
+                        user["email"] = new_email.strip()
+                        st.session_state.settings_email_version += 1
+                        st.success("Email updated.")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
+            st.session_state.setdefault("settings_password_version", 0)
+            pv = st.session_state.settings_password_version
+            with st.form(f"settings_password_form_v{pv}"):
+                current_pw = st.text_input("Current password", type="password", key=f"settings_cur_pw_v{pv}")
+                new_pw = st.text_input("New password", type="password", key=f"settings_new_pw_v{pv}")
+                st.caption("Needs at least 8 characters, including one number and one uppercase letter.")
+                if st.form_submit_button("Update password"):
+                    ok, msg = auth.change_password(user["id"], current_pw, new_pw)
+                    if ok:
+                        st.session_state.settings_password_version += 1
+                        st.success("Password updated.")
+                        st.rerun()
+                    else:
+                        st.error(msg)
 
 
 def render_sidebar_help(user):
@@ -619,6 +707,8 @@ def render_admin(user):
         else:
             st.dataframe(pd.DataFrame(activity), use_container_width=True)
 
+
+styles.inject(bool(st.session_state.auth_user and st.session_state.auth_user.get("dark_mode")))
 
 if st.session_state.auth_user is None:
     render_auth_gate()
