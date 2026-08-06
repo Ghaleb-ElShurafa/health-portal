@@ -129,6 +129,7 @@ def init_db():
         "goal": "ALTER TABLE users ADD COLUMN goal TEXT",
         "dark_mode": "ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0",
         "language": "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'English'",
+        "community_public": "ALTER TABLE users ADD COLUMN community_public INTEGER NOT NULL DEFAULT 1",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
@@ -308,6 +309,40 @@ def init_db():
             admin_reply TEXT,
             replied_at TEXT,
             user_seen_reply INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS community_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            display_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS friendships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            requester_id INTEGER NOT NULL REFERENCES users(id),
+            addressee_id INTEGER NOT NULL REFERENCES users(id),
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS direct_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user_id INTEGER NOT NULL REFERENCES users(id),
+            to_user_id INTEGER NOT NULL REFERENCES users(id),
+            content TEXT NOT NULL,
+            read_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -800,6 +835,210 @@ def count_unseen_replies(user_id):
     conn = _connect()
     row = conn.execute(
         "SELECT COUNT(*) AS c FROM reviews WHERE user_id = ? AND admin_reply IS NOT NULL AND user_seen_reply = 0",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return dict(row)["c"] if row else 0
+
+
+def update_community_privacy(user_id, public: bool):
+    conn = _connect()
+    conn.execute("UPDATE users SET community_public = ? WHERE id = ?", (1 if public else 0, user_id))
+    conn.commit()
+    conn.close()
+
+
+def create_post(user_id, display_name, content):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO community_posts (user_id, display_name, content) VALUES (?, ?, ?)",
+        (user_id, display_name, content),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_public_posts(limit=100):
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT community_posts.* FROM community_posts
+        JOIN users ON users.id = community_posts.user_id
+        WHERE users.community_public = 1
+        ORDER BY community_posts.created_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def delete_post(post_id, user_id):
+    conn = _connect()
+    conn.execute("DELETE FROM community_posts WHERE id = ? AND user_id = ?", (post_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def search_users(query, exclude_user_id):
+    conn = _connect()
+    like = f"%{query}%"
+    rows = conn.execute(
+        """
+        SELECT id, email, first_name, last_name FROM users
+        WHERE id != ? AND auth_provider != 'guest'
+        AND (email LIKE ? OR first_name LIKE ? OR last_name LIKE ?)
+        LIMIT 10
+        """,
+        (exclude_user_id, like, like, like),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_friendship(user_a, user_b):
+    conn = _connect()
+    row = conn.execute(
+        """
+        SELECT * FROM friendships
+        WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)
+        """,
+        (user_a, user_b, user_b, user_a),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def send_friend_request(requester_id, addressee_id):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO friendships (requester_id, addressee_id, status) VALUES (?, ?, 'pending')",
+        (requester_id, addressee_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def respond_friend_request(request_id, accept):
+    conn = _connect()
+    if accept:
+        conn.execute("UPDATE friendships SET status = 'accepted' WHERE id = ?", (request_id,))
+    else:
+        conn.execute("DELETE FROM friendships WHERE id = ?", (request_id,))
+    conn.commit()
+    conn.close()
+
+
+def remove_friend(user_a, user_b):
+    conn = _connect()
+    conn.execute(
+        """
+        DELETE FROM friendships
+        WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)
+        """,
+        (user_a, user_b, user_b, user_a),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_pending_requests(user_id):
+    """Incoming requests awaiting this user's response."""
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT friendships.id AS request_id, users.id AS user_id, users.email,
+               users.first_name, users.last_name
+        FROM friendships JOIN users ON users.id = friendships.requester_id
+        WHERE friendships.addressee_id = ? AND friendships.status = 'pending'
+        ORDER BY friendships.created_at DESC
+        """,
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def list_sent_request_ids(user_id):
+    """IDs of users this user has already sent a still-pending request to."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT addressee_id FROM friendships WHERE requester_id = ? AND status = 'pending'",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return {row["addressee_id"] for row in rows}
+
+
+def list_friends(user_id):
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT users.id AS user_id, users.email, users.first_name, users.last_name
+        FROM friendships JOIN users ON users.id = friendships.addressee_id
+        WHERE friendships.status = 'accepted' AND friendships.requester_id = ?
+        UNION
+        SELECT users.id AS user_id, users.email, users.first_name, users.last_name
+        FROM friendships JOIN users ON users.id = friendships.requester_id
+        WHERE friendships.status = 'accepted' AND friendships.addressee_id = ?
+        ORDER BY first_name
+        """,
+        (user_id, user_id),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def send_message(from_id, to_id, content):
+    conn = _connect()
+    conn.execute(
+        "INSERT INTO direct_messages (from_user_id, to_user_id, content) VALUES (?, ?, ?)",
+        (from_id, to_id, content),
+    )
+    conn.commit()
+    conn.close()
+
+
+def list_conversation(user_id, other_id):
+    conn = _connect()
+    rows = conn.execute(
+        """
+        SELECT * FROM direct_messages
+        WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)
+        ORDER BY created_at ASC
+        """,
+        (user_id, other_id, other_id, user_id),
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def mark_messages_read(user_id, from_id):
+    conn = _connect()
+    conn.execute(
+        "UPDATE direct_messages SET read_at = CURRENT_TIMESTAMP "
+        "WHERE to_user_id = ? AND from_user_id = ? AND read_at IS NULL",
+        (user_id, from_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def count_unread_from(user_id, from_id):
+    conn = _connect()
+    row = conn.execute(
+        "SELECT COUNT(*) AS c FROM direct_messages WHERE to_user_id = ? AND from_user_id = ? AND read_at IS NULL",
+        (user_id, from_id),
+    ).fetchone()
+    conn.close()
+    return dict(row)["c"] if row else 0
+
+
+def count_unread_messages(user_id):
+    conn = _connect()
+    row = conn.execute(
+        "SELECT COUNT(*) AS c FROM direct_messages WHERE to_user_id = ? AND read_at IS NULL",
         (user_id,),
     ).fetchone()
     conn.close()

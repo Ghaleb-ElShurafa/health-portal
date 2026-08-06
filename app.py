@@ -11,7 +11,7 @@ import db
 import reference_ranges as rr
 import styles
 from pwa import ensure_pwa_assets
-from services import bloodwork_analysis, conditions_tracker, fitness_coach, patient_profile, plate_score
+from services import bloodwork_analysis, community_hub, conditions_tracker, fitness_coach, patient_profile, plate_score
 
 ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
@@ -215,6 +215,7 @@ SERVICE_NAV = [
     ("🏋️ Fitness Coach", "fitness_coach"),
     ("📅 Conditions Tracker", "conditions_tracker"),
     ("🍽️ Plate Score", "plate_score"),
+    ("👥 Community Hub", "community_hub"),
 ]
 
 
@@ -360,6 +361,19 @@ def render_site_menu(user):
                 "Arabic and French are on the way — the app will keep showing English "
                 "under the hood until full translation ships."
             )
+
+        if not is_guest:
+            st.markdown("**Community**")
+            current_public = bool(user.get("community_public", True))
+            public_choice = st.checkbox(
+                "Share my posts on the Community Hub's public feed",
+                value=current_public, key="settings_community_public",
+            )
+            if public_choice != current_public:
+                user["community_public"] = public_choice
+                db.update_community_privacy(user["id"], public_choice)
+                st.rerun()
+            st.caption("Turning this off hides your posts from everyone else, but you can still read the public feed and message friends.")
 
         if is_guest:
             st.divider()
@@ -576,9 +590,12 @@ def render_landing(user, as_admin_preview=False):
                 st.rerun()
     with row2[2]:
         with st.container(border=True):
-            st.markdown('<div class="service-icon-badge badge-purple">➕</div>', unsafe_allow_html=True)
-            st.markdown("#### More services")
-            st.caption("New services will appear here as they're added.")
+            st.markdown('<div class="service-icon-badge badge-purple">👥</div>', unsafe_allow_html=True)
+            st.markdown("#### Community Hub")
+            st.caption("Share your journey publicly, connect with friends, and message them privately.")
+            if st.button("Open", key="open_community_hub"):
+                st.session_state.current_service = "community_hub"
+                st.rerun()
 
 
 def render_admin(user):
@@ -747,5 +764,7 @@ else:
         conditions_tracker.render(current_user)
     elif st.session_state.current_service == "plate_score":
         plate_score.render(current_user)
+    elif st.session_state.current_service == "community_hub":
+        community_hub.render(current_user)
     else:
         render_landing(current_user, as_admin_preview=current_user.get("is_admin", False))

@@ -82,6 +82,7 @@ def _public_user(row):
         "country": row["country"],
         "dark_mode": bool(row["dark_mode"]) if row["dark_mode"] is not None else False,
         "language": row["language"] or "English",
+        "community_public": bool(row["community_public"]) if row["community_public"] is not None else True,
     }
 
 
