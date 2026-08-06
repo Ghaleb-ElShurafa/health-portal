@@ -189,6 +189,25 @@ def render_auth_gate():
                 db.log_activity(display_name, display_name, "guest")
                 st.rerun()
 
+    st.divider()
+    with st.expander("📲 Install this app on your iPhone"):
+        st.caption("Adds a Health Portal icon to your home screen, so it opens like a regular app.")
+        step_cols = st.columns(3)
+        steps = [
+            ("badge-blue", "📤", "1. Tap Share", "In Safari's toolbar, tap the Share icon (a square with an arrow pointing up)."),
+            ("badge-teal", "➕", "2. Add to Home Screen", "Scroll down the menu that pops up — tap More first if you don't see it — and choose \"Add to Home Screen.\""),
+            ("badge-green", "✅", "3. Tap Add", "Confirm by tapping Add in the top-right corner. The app icon now appears on your home screen."),
+        ]
+        for col, (badge_cls, icon, title, body) in zip(step_cols, steps):
+            with col:
+                st.markdown(
+                    f'<div class="service-icon-badge {badge_cls}">{icon}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"**{title}**")
+                st.caption(body)
+        st.caption("Note: this only works in Safari — Chrome and other iPhone browsers don't support adding to the home screen.")
+
 
 SERVICE_NAV = [
     ("📋 Patient Profile", "patient_profile"),
