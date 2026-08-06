@@ -32,19 +32,32 @@ div[data-testid="stVerticalBlock"]:has(> div[class*="st-key-open_"]):hover {
     border-color: rgba(0, 97, 239, 0.35) !important;
 }
 /* The "Open" button becomes an invisible full-card click target so the whole
-   card is clickable, not just a small button at the bottom. */
+   card is clickable, not just a small button at the bottom. Both the wrapper
+   AND the button itself need "position: absolute; inset: 0" -- percentage
+   height on the button alone doesn't reliably cascade through Streamlit's
+   own layout, which left only a ~40px strip near the top of each card
+   actually clickable. */
 div[data-testid="stVerticalBlock"] > div[class*="st-key-open_"] {
-    position: absolute;
-    inset: 0;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     z-index: 5;
 }
 div[data-testid="stVerticalBlock"] > div[class*="st-key-open_"] button {
-    width: 100%;
-    height: 100%;
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
     /* iOS Safari doesn't reliably dispatch tap events to fully transparent
-       (opacity: 0) elements -- a near-zero value keeps it invisible to the
-       eye while staying tappable. */
-    opacity: 0.01;
+       (opacity: 0) elements -- staying fully opaque but visually blank
+       (transparent fill/text) keeps it invisible while staying tappable
+       everywhere, including in stricter automated/accessibility click paths. */
+    opacity: 1;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: transparent !important;
     cursor: pointer;
 }
 
