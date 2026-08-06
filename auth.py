@@ -70,6 +70,29 @@ def validate_profile(first_name, last_name, age, country):
     return True, ""
 
 
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+
+
+def validate_username(username, exclude_user_id=None):
+    username = username.strip()
+    if not USERNAME_PATTERN.match(username):
+        return False, "Username must be 3-20 characters: letters, numbers, and underscores only."
+    existing = db.get_user_by_username(username)
+    if existing and existing["id"] != exclude_user_id:
+        return False, "That username is already taken."
+    return True, ""
+
+
+def _generate_username(seed):
+    base = re.sub(r"[^A-Za-z0-9_]", "", seed)[:15] or "user"
+    candidate = base
+    suffix = 0
+    while db.get_user_by_username(candidate):
+        suffix += 1
+        candidate = f"{base}{suffix}"
+    return candidate
+
+
 def _public_user(row):
     return {
         "id": row["id"],
@@ -83,10 +106,11 @@ def _public_user(row):
         "dark_mode": bool(row["dark_mode"]) if row["dark_mode"] is not None else False,
         "language": row["language"] or "English",
         "community_public": bool(row["community_public"]) if row["community_public"] is not None else True,
+        "username": row["username"],
     }
 
 
-def sign_up(email, password, first_name, last_name, age, country):
+def sign_up(email, password, first_name, last_name, age, country, username):
     import bcrypt
 
     if db.get_user_by_email(email):
@@ -100,6 +124,10 @@ def sign_up(email, password, first_name, last_name, age, country):
     if not ok:
         return None, message
 
+    ok, message = validate_username(username)
+    if not ok:
+        return None, message
+
     password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     user_id = db.create_user(
         email,
@@ -109,6 +137,7 @@ def sign_up(email, password, first_name, last_name, age, country):
         last_name=last_name.strip(),
         age=age,
         country=country.strip(),
+        username=username.strip(),
     )
     return _public_user(db.get_user_by_email(email)), ""
 
@@ -183,12 +212,14 @@ def complete_google_login(code, state):
         existing = db.get_user_by_email(email)
         if existing:
             return None, "An account with this email already exists using password sign-in."
+        username = _generate_username(claims.get("given_name") or email.split("@")[0])
         user_id = db.create_user(
             email,
             auth_provider="google",
             google_sub=google_sub,
             first_name=claims.get("given_name"),
             last_name=claims.get("family_name"),
+            username=username,
         )
         user = db.get_user_by_email(email)
 
@@ -256,4 +287,12 @@ def change_display_name(user_id, first_name, last_name):
     if not first_name or not last_name:
         return False, "First and last name are required."
     db.update_display_name(user_id, first_name, last_name)
+    return True, ""
+
+
+def change_username(user_id, new_username):
+    ok, message = validate_username(new_username, exclude_user_id=user_id)
+    if not ok:
+        return False, message
+    db.update_username(user_id, new_username.strip())
     return True, ""

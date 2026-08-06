@@ -55,9 +55,15 @@ def _render_feed_tab(user):
             st.write(post["content"])
 
 
+def _identity_caption(user_row):
+    return f"@{user_row['username']} · {user_row['email']}" if user_row.get("username") else user_row["email"]
+
+
 def _render_friends_tab(user):
     st.markdown("**Find people**")
-    query = st.text_input("Search by name or email", key="community_friend_search", placeholder="e.g. Alex or alex@example.com")
+    if not user.get("username"):
+        st.caption("Set a username in Settings so friends can find you too.")
+    query = st.text_input("Search by username", key="community_friend_search", placeholder="e.g. alexj")
     if query.strip():
         results = db.search_users(query.strip(), user["id"])
         friend_ids = {f["user_id"] for f in db.list_friends(user["id"])}
@@ -69,7 +75,7 @@ def _render_friends_tab(user):
                 cols = st.columns([3, 1])
                 with cols[0]:
                     st.write(_display_name(person))
-                    st.caption(person["email"])
+                    st.caption(_identity_caption(person))
                 with cols[1]:
                     if person["id"] in friend_ids:
                         st.caption("Friends")
@@ -89,7 +95,7 @@ def _render_friends_tab(user):
                 cols = st.columns([3, 1, 1])
                 with cols[0]:
                     st.write(_display_name(req))
-                    st.caption(req["email"])
+                    st.caption(_identity_caption(req))
                 with cols[1]:
                     if st.button("Accept", key=f"accept_{req['request_id']}"):
                         db.respond_friend_request(req["request_id"], True)
@@ -109,7 +115,7 @@ def _render_friends_tab(user):
             cols = st.columns([3, 1])
             with cols[0]:
                 st.write(_display_name(friend))
-                st.caption(friend["email"])
+                st.caption(_identity_caption(friend))
             with cols[1]:
                 if st.button("Remove", key=f"remove_friend_{friend['user_id']}"):
                     db.remove_friend(user["id"], friend["user_id"])

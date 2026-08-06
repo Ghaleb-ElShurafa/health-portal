@@ -130,6 +130,7 @@ def init_db():
         "dark_mode": "ALTER TABLE users ADD COLUMN dark_mode INTEGER NOT NULL DEFAULT 0",
         "language": "ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'English'",
         "community_public": "ALTER TABLE users ADD COLUMN community_public INTEGER NOT NULL DEFAULT 1",
+        "username": "ALTER TABLE users ADD COLUMN username TEXT",
     }
     for column, statement in migrations.items():
         if column not in existing_columns:
@@ -315,6 +316,17 @@ def init_db():
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS welcome_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+            content TEXT NOT NULL,
+            seen INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS community_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id),
@@ -360,12 +372,13 @@ def create_user(
     last_name=None,
     age=None,
     country=None,
+    username=None,
 ):
     conn = _connect()
     cur = conn.execute(
-        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country),
+        "INSERT INTO users (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, username) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (email, password_hash, auth_provider, google_sub, first_name, last_name, age, country, username),
     )
     conn.commit()
     user_id = cur.lastrowid
@@ -378,6 +391,22 @@ def get_user_by_email(email):
     row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_user_by_username(username):
+    conn = _connect()
+    row = conn.execute(
+        "SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_username(user_id, username):
+    conn = _connect()
+    conn.execute("UPDATE users SET username = ? WHERE id = ?", (username, user_id))
+    conn.commit()
+    conn.close()
 
 
 def get_user_by_google_sub(google_sub):
@@ -886,12 +915,12 @@ def search_users(query, exclude_user_id):
     like = f"%{query}%"
     rows = conn.execute(
         """
-        SELECT id, email, first_name, last_name FROM users
+        SELECT id, email, first_name, last_name, username FROM users
         WHERE id != ? AND auth_provider != 'guest'
-        AND (email LIKE ? OR first_name LIKE ? OR last_name LIKE ?)
+        AND (email LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR username LIKE ?)
         LIMIT 10
         """,
-        (exclude_user_id, like, like, like),
+        (exclude_user_id, like, like, like, like),
     ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -949,7 +978,7 @@ def list_pending_requests(user_id):
     rows = conn.execute(
         """
         SELECT friendships.id AS request_id, users.id AS user_id, users.email,
-               users.first_name, users.last_name
+               users.first_name, users.last_name, users.username
         FROM friendships JOIN users ON users.id = friendships.requester_id
         WHERE friendships.addressee_id = ? AND friendships.status = 'pending'
         ORDER BY friendships.created_at DESC
@@ -975,11 +1004,11 @@ def list_friends(user_id):
     conn = _connect()
     rows = conn.execute(
         """
-        SELECT users.id AS user_id, users.email, users.first_name, users.last_name
+        SELECT users.id AS user_id, users.email, users.first_name, users.last_name, users.username
         FROM friendships JOIN users ON users.id = friendships.addressee_id
         WHERE friendships.status = 'accepted' AND friendships.requester_id = ?
         UNION
-        SELECT users.id AS user_id, users.email, users.first_name, users.last_name
+        SELECT users.id AS user_id, users.email, users.first_name, users.last_name, users.username
         FROM friendships JOIN users ON users.id = friendships.requester_id
         WHERE friendships.status = 'accepted' AND friendships.addressee_id = ?
         ORDER BY first_name
@@ -1043,3 +1072,28 @@ def count_unread_messages(user_id):
     ).fetchone()
     conn.close()
     return dict(row)["c"] if row else 0
+
+
+def create_welcome_message(user_id, content):
+    """Idempotent -- safe to call on every login, only inserts once per user."""
+    conn = _connect()
+    conn.execute(
+        "INSERT OR IGNORE INTO welcome_messages (user_id, content) VALUES (?, ?)",
+        (user_id, content),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_welcome_message(user_id):
+    conn = _connect()
+    row = conn.execute("SELECT * FROM welcome_messages WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def mark_welcome_seen(user_id):
+    conn = _connect()
+    conn.execute("UPDATE welcome_messages SET seen = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()

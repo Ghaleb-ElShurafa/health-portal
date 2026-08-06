@@ -17,6 +17,13 @@ ensure_pwa_assets()
 st.set_page_config(page_title="Health Services Portal", page_icon="🏥", layout="centered")
 db.init_db()
 
+WELCOME_MESSAGE = (
+    "Welcome to the Health Services Portal! We're glad you're here. Start with "
+    "Patient Profile so every other service can personalize itself to you, and "
+    "check out the Community Hub to connect with others on a similar journey. "
+    "Run into a problem? Use Technical Issues in the menu — our team reads every report."
+)
+
 if "auth_user" not in st.session_state:
     st.session_state.auth_user = None
 if "guest_entries" not in st.session_state:
@@ -115,6 +122,7 @@ def render_auth_gate():
             _set_remember_cookie(token)
             st.session_state.auth_user = user
             db.log_activity(user["email"], user.get("first_name"), "google")
+            db.create_welcome_message(user["id"], WELCOME_MESSAGE)
             st.rerun()
         else:
             st.error(error)
@@ -134,6 +142,7 @@ def render_auth_gate():
                         _set_remember_cookie(token)
                     st.session_state.auth_user = user
                     db.log_activity(user["email"], user.get("first_name"), "password")
+                    db.create_welcome_message(user["id"], WELCOME_MESSAGE)
                     st.rerun()
                 else:
                     st.error(error)
@@ -149,17 +158,22 @@ def render_auth_gate():
             c1, c2 = st.columns(2)
             first_name = c1.text_input("First name", key="signup_first_name")
             last_name = c2.text_input("Last name", key="signup_last_name")
+            username = st.text_input(
+                "Username", key="signup_username",
+                placeholder="e.g. alexj — how friends will find you in the Community Hub",
+            )
             c3, c4 = st.columns(2)
             age = c3.number_input("Age", min_value=0, max_value=120, step=1, value=None, key="signup_age")
             country = c4.text_input("Country of residence", key="signup_country")
             email = st.text_input("Email", key="signup_email")
             password = st.text_input("Password", type="password", key="signup_password")
             st.caption("Password needs at least 8 characters, including one number and one uppercase letter.")
+            st.caption("Username needs 3-20 characters: letters, numbers, and underscores only.")
             st.caption("Medical conditions, medications, and goals are collected after signup in Patient Profile.")
             keep_logged_in = st.checkbox("Keep me logged in", key="signup_keep")
             if st.form_submit_button("Sign Up"):
                 user, error = auth.sign_up(
-                    email, password, first_name, last_name, int(age) if age is not None else None, country,
+                    email, password, first_name, last_name, int(age) if age is not None else None, country, username,
                 )
                 if user:
                     if keep_logged_in:
@@ -167,6 +181,7 @@ def render_auth_gate():
                         _set_remember_cookie(token)
                     st.session_state.auth_user = user
                     db.log_activity(user["email"], user.get("first_name"), "signup")
+                    db.create_welcome_message(user["id"], WELCOME_MESSAGE)
                     st.rerun()
                 else:
                     st.error(error)
@@ -186,6 +201,7 @@ def render_auth_gate():
                     "is_admin": False,
                     "first_name": display_name,
                 }
+                st.session_state.guest_welcome_message = {"content": WELCOME_MESSAGE, "seen": False}
                 db.log_activity(display_name, display_name, "guest")
                 st.rerun()
 
@@ -209,29 +225,14 @@ def render_auth_gate():
         st.caption("Note: this only works in Safari — Chrome and other iPhone browsers don't support adding to the home screen.")
 
 
-SERVICE_NAV = [
-    ("📋 Patient Profile", "patient_profile"),
-    ("🩺 Bloodwork Analysis", "bloodwork_analysis"),
-    ("🏋️ Fitness Coach", "fitness_coach"),
-    ("📅 Conditions Tracker", "conditions_tracker"),
-    ("🍽️ Plate Score", "plate_score"),
-    ("👥 Community Hub", "community_hub"),
-]
-
-
 def render_site_menu(user):
     """Rendered directly inside the sidebar (not behind a nested popover) so
     opening the sidebar — one tap on mobile — immediately shows everything;
     no second "Menu" click required."""
     st.markdown("**☰ Menu**")
-    st.markdown("**🧭 Jump to a service**")
-    for label, service_key in SERVICE_NAV:
-        if st.button(label, key=f"nav_{service_key}", use_container_width=True):
-            st.session_state.current_service = service_key
-            st.rerun()
 
-    tab_about, tab_tutorials, tab_qa, tab_review, tab_issues, tab_settings = st.tabs(
-        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "⭐ Leave a Review", "🚩 Technical Issues", "⚙️ Settings"]
+    tab_qa, tab_tutorials, tab_settings, tab_about, tab_review, tab_issues = st.tabs(
+        ["❓ Q&A", "🎓 Tutorials", "⚙️ Settings", "ℹ️ About", "⭐ Leave a Review", "🚩 Technical Issues"]
     )
 
     with tab_about:
@@ -364,6 +365,23 @@ def render_site_menu(user):
 
         if not is_guest:
             st.markdown("**Community**")
+            st.session_state.setdefault("settings_username_version", 0)
+            uv = st.session_state.settings_username_version
+            with st.form(f"settings_username_form_v{uv}"):
+                new_username = st.text_input(
+                    "Username", value=user.get("username") or "", key=f"settings_username_v{uv}",
+                    help="Lets friends find you in the Community Hub. 3-20 characters: letters, numbers, underscores.",
+                )
+                if st.form_submit_button("Update username"):
+                    ok, msg = auth.change_username(user["id"], new_username)
+                    if ok:
+                        user["username"] = new_username.strip()
+                        st.session_state.settings_username_version += 1
+                        st.success("Username updated.")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+
             current_public = bool(user.get("community_public", True))
             public_choice = st.checkbox(
                 "Share my posts on the Community Hub's public feed",
@@ -455,34 +473,54 @@ def render_sidebar_help(user):
 
 def render_messages_button(user):
     if user["auth_provider"] == "guest":
-        with st.popover("💬", help="Messages"):
+        welcome = st.session_state.get("guest_welcome_message")
+        unseen = 1 if welcome and not welcome["seen"] else 0
+        label = f"💬 {unseen}" if unseen else "💬"
+        with st.popover(label, help="Messages"):
             st.markdown("**Messages**")
+            if welcome:
+                with st.container(border=True):
+                    st.caption("From the Health Portal team")
+                    st.write(welcome["content"])
+                if unseen and st.button("Mark as read", key="mark_welcome_read_guest", use_container_width=True):
+                    st.session_state.guest_welcome_message["seen"] = True
+                    st.rerun()
             st.caption(
-                "Messages aren't available for guest sessions. Sign up for an "
-                "account to receive replies from our team on any review you leave."
+                "Sign up for an account to keep your messages, reply-free updates from "
+                "our team, and message friends you make in the Community Hub."
             )
         return
 
-    unseen = db.count_unseen_replies(user["id"])
-    label = f"💬 {unseen}" if unseen else "💬"
+    welcome = db.get_welcome_message(user["id"])
+    welcome_unseen = bool(welcome and not welcome["seen"])
+    review_unseen = db.count_unseen_replies(user["id"])
+    total_unseen = review_unseen + (1 if welcome_unseen else 0)
+    label = f"💬 {total_unseen}" if total_unseen else "💬"
     with st.popover(label, help="Messages"):
         st.markdown("**Messages**")
+        if welcome:
+            with st.container(border=True):
+                st.caption(f"From the Health Portal team ({welcome['created_at']})")
+                st.write(welcome["content"])
+
         reviews = db.get_reviews_for_user(user["id"])
         replied = [r for r in reviews if r["admin_reply"]]
-        if not replied:
-            st.caption("No replies yet. Leave a review from the Menu and the team may respond here.")
+        if not replied and not welcome:
+            st.caption("No messages yet. Leave a review from the Menu and the team may respond here.")
         else:
             for r in replied:
                 with st.container(border=True):
                     st.caption(f"Your review ({r['created_at']}): {r['feedback']}")
                     st.markdown(f"**Team reply:** {r['admin_reply']}")
                     st.caption(r["replied_at"])
-            if unseen:
-                if st.button("Mark all as read", key="mark_all_read", use_container_width=True):
-                    for r in replied:
-                        if not r["user_seen_reply"]:
-                            db.mark_review_seen(r["id"])
-                    st.rerun()
+        if total_unseen:
+            if st.button("Mark all as read", key="mark_all_read", use_container_width=True):
+                if welcome_unseen:
+                    db.mark_welcome_seen(user["id"])
+                for r in replied:
+                    if not r["user_seen_reply"]:
+                        db.mark_review_seen(r["id"])
+                st.rerun()
 
 
 def render_landing(user, as_admin_preview=False):
@@ -551,7 +589,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-blue">📋</div>', unsafe_allow_html=True)
             st.markdown("#### Patient Profile")
             st.caption("A general health screening — conditions, medications, supplements, goals — that personalizes every other service.")
-            if st.button("Open", key="open_patient_profile"):
+            if st.button(" ", key="open_patient_profile"):
                 st.session_state.current_service = "patient_profile"
                 st.rerun()
     with row1[1]:
@@ -559,7 +597,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-teal">🩺</div>', unsafe_allow_html=True)
             st.markdown("#### Bloodwork Analysis")
             st.caption("Upload a lab report document, get AI-powered insights, and see trends over time.")
-            if st.button("Open", key="open_bloodwork_analysis"):
+            if st.button(" ", key="open_bloodwork_analysis"):
                 st.session_state.current_service = "bloodwork_analysis"
                 st.rerun()
     with row1[2]:
@@ -567,7 +605,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-green">🏋️</div>', unsafe_allow_html=True)
             st.markdown("#### Fitness Coach")
             st.caption("Build your own routine or get an AI-suggested plan, with a muscle diagram and calorie tracking.")
-            if st.button("Open", key="open_fitness_coach"):
+            if st.button(" ", key="open_fitness_coach"):
                 st.session_state.current_service = "fitness_coach"
                 st.rerun()
 
@@ -577,7 +615,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-orange">📅</div>', unsafe_allow_html=True)
             st.markdown("#### Conditions Tracker")
             st.caption("Log symptoms on a calendar for any condition you're monitoring, and get an AI trend summary.")
-            if st.button("Open", key="open_conditions_tracker"):
+            if st.button(" ", key="open_conditions_tracker"):
                 st.session_state.current_service = "conditions_tracker"
                 st.rerun()
     with row2[1]:
@@ -585,7 +623,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-pink">🍽️</div>', unsafe_allow_html=True)
             st.markdown("#### Plate Score")
             st.caption("Photograph your meal for an AI-scored calorie and nutrition breakdown, personalized to your profile.")
-            if st.button("Open", key="open_plate_score"):
+            if st.button(" ", key="open_plate_score"):
                 st.session_state.current_service = "plate_score"
                 st.rerun()
     with row2[2]:
@@ -593,7 +631,7 @@ def render_landing(user, as_admin_preview=False):
             st.markdown('<div class="service-icon-badge badge-purple">👥</div>', unsafe_allow_html=True)
             st.markdown("#### Community Hub")
             st.caption("Share your journey publicly, connect with friends, and message them privately.")
-            if st.button("Open", key="open_community_hub"):
+            if st.button(" ", key="open_community_hub"):
                 st.session_state.current_service = "community_hub"
                 st.rerun()
 
