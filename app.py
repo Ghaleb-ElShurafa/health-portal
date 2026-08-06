@@ -343,14 +343,18 @@ def render_landing(user, as_admin_preview=False):
     if announcement:
         st.info(announcement)
 
-    st.subheader("🔍 Ask anything")
-    query = st.text_input(
-        "Search or ask a question",
-        key="site_search_query",
-        placeholder="e.g. How do I read my cholesterol results?",
-        label_visibility="collapsed",
-    )
-    if st.button("Search") and query.strip():
+    st.subheader("Ask anything")
+    search_col, button_col = st.columns([9, 1], vertical_alignment="bottom")
+    with search_col:
+        query = st.text_input(
+            "Search or ask a question",
+            key="site_search_query",
+            placeholder="e.g. How do I read my cholesterol results?",
+            label_visibility="collapsed",
+        )
+    with button_col:
+        submitted_search = st.button("🔍", key="search_submit", help="Search", use_container_width=True)
+    if submitted_search and query.strip():
         with st.spinner("Thinking..."):
             st.session_state.search_answer = ai_assistant.answer_search(query.strip())
         st.rerun()

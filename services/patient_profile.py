@@ -256,7 +256,7 @@ def render(user):
         st.title("📋 Patient Profile")
         st.caption(f"Signed in as **{user['email']}**" + (" (guest session)" if user["auth_provider"] == "guest" else ""))
     with top_right:
-        if st.button("← Back to Services"):
+        if st.button("← Back to Services", key="back_link"):
             st.session_state.current_service = None
             st.rerun()
 
