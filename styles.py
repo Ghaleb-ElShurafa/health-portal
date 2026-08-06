@@ -147,6 +147,9 @@ div[class*="st-key-site_search_query"] input:focus {{
     border-bottom-color: {c["accent"]} !important;
     box-shadow: none !important;
 }}
+div[class*="st-key-site_search_query"] div:has(> input) {{
+    background: transparent !important;
+}}
 div[class*="st-key-search_submit"] button {{
     background: transparent !important;
     border: none !important;
@@ -237,6 +240,18 @@ section[data-testid="stSidebar"] {{
 [data-testid="stPopoverBody"] {{
     background: {c["popover_bg"]} !important;
     border-color: {c["input_border"]} !important;
+}}
+
+/* Selectbox dropdown popup (react-aria listbox, not BaseWeb -- no data-baseweb
+   attribute in this Streamlit version, so it needs its own selector) */
+div:has(> [role="listbox"]) {{
+    background: {c["popover_bg"]} !important;
+}}
+[role="option"] {{
+    color: {c["text_primary"]} !important;
+}}
+[role="option"][data-focused="true"], [role="option"]:hover {{
+    background: {c["input_bg"]} !important;
 }}
 
 /* Service icon badges */
