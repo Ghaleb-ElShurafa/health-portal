@@ -35,7 +35,7 @@ if "guest_fitness_settings" not in st.session_state:
 if "guest_workout_log" not in st.session_state:
     st.session_state.guest_workout_log = []
 if "view_as_user" not in st.session_state:
-    st.session_state.view_as_user = False
+    st.session_state.view_as_user = True
 if "current_service" not in st.session_state:
     st.session_state.current_service = None
 if "help_chat" not in st.session_state:
@@ -87,7 +87,7 @@ def _log_out(user):
     st.session_state.pop("guest_workout_log_next_id", None)
     st.session_state.pop("pp_editing", None)
     st.session_state.pp_just_saved = False
-    st.session_state.view_as_user = False
+    st.session_state.view_as_user = True
     st.session_state.current_service = None
     st.session_state.search_answer = None
     st.rerun()
@@ -201,97 +201,99 @@ SERVICE_NAV = [
 
 
 def render_site_menu(user):
-    with st.popover("Menu", icon=":material/menu:", use_container_width=True):
-        tab_about, tab_tutorials, tab_qa, tab_issues = st.tabs(
-            ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "🚩 Technical Issues"]
+    """Rendered directly inside the sidebar (not behind a nested popover) so
+    opening the sidebar — one tap on mobile — immediately shows everything;
+    no second "Menu" click required."""
+    st.markdown("**☰ Menu**")
+    st.markdown("**🧭 Jump to a service**")
+    for label, service_key in SERVICE_NAV:
+        if st.button(label, key=f"nav_{service_key}", use_container_width=True):
+            st.session_state.current_service = service_key
+            st.rerun()
+
+    tab_about, tab_tutorials, tab_qa, tab_issues = st.tabs(
+        ["ℹ️ About", "🎓 Tutorials", "❓ Q&A", "🚩 Technical Issues"]
+    )
+
+    with tab_about:
+        st.markdown("**Health Services Portal**")
+        st.write(
+            "A multi-service health app: a Patient Profile screening personalizes "
+            "AI-powered bloodwork analysis, a wellness/diet coach, a calendar-based "
+            "conditions tracker, and a meal-photo calorie and health scorer."
+        )
+        st.caption(
+            "⚠️ This is an educational/portfolio project, not medical advice, and "
+            "not a substitute for care from a licensed professional."
         )
 
-        with tab_about:
-            st.markdown("**Health Services Portal**")
+    with tab_tutorials:
+        st.markdown("**Getting started**")
+        st.markdown(
+            "1. **Patient Profile** — start here. Add any conditions, medications, "
+            "supplements, and goals so every other service can personalize itself "
+            "to you.\n"
+            "2. **Bloodwork Analysis** — upload a photo or PDF of a lab report; AI "
+            "reads the values, you review/correct them, then save to see flagged "
+            "results and a summary.\n"
+            "3. **Fitness Coach** — build your own workout routine from a curated "
+            "exercise library, or answer a short questionnaire to get an AI-suggested "
+            "diet + exercise plan, automatically enriched by your bloodwork and "
+            "Conditions Tracker data if you have any.\n"
+            "4. **Conditions Tracker** — pick a condition to monitor, then click any "
+            "day on the calendar to log symptoms; after a few entries, analyze "
+            "patterns to spot trends and possible triggers.\n"
+            "5. **Plate Score** — photograph or upload a meal photo for an instant "
+            "calorie/nutrition score, personalized to your profile."
+        )
+
+    with tab_qa:
+        with st.expander("Is this real medical advice?"):
             st.write(
-                "A multi-service health app: a Patient Profile screening personalizes "
-                "AI-powered bloodwork analysis, a wellness/diet coach, a calendar-based "
-                "conditions tracker, and a meal-photo calorie and health scorer."
+                "No. Every AI-generated summary is educational only. \"Consult a "
+                "doctor\" flags are always computed with local rule-based logic, "
+                "independent of the AI — always follow up with a real clinician."
             )
-            st.caption(
-                "⚠️ This is an educational/portfolio project, not medical advice, and "
-                "not a substitute for care from a licensed professional."
+        with st.expander("Is my data private?"):
+            st.write(
+                "Your data is stored to power your own account's features (trends, "
+                "history, personalization) and isn't shared. Uploaded bloodwork/meal "
+                "photos are read by the AI and not stored — only the extracted values "
+                "are kept. Guest sessions aren't saved at all once you close the tab."
+            )
+        with st.expander("How does the AI work?"):
+            st.write(
+                "Google's Gemini API reads documents/photos and writes explanatory "
+                "text. Anything clinically significant (like a \"consult a doctor\" "
+                "flag) is always decided by fixed rule-based logic, never by the AI."
+            )
+        with st.expander("What if I don't have a lab report to upload?"):
+            st.write(
+                "Bloodwork Analysis requires an uploaded document, but every other "
+                "service works without one — Fitness Coach falls back to its "
+                "questionnaire, and Conditions Tracker/Plate Score/Patient Profile "
+                "don't need bloodwork at all."
+            )
+        with st.expander("Do I need to create an account?"):
+            st.write(
+                "No — use \"Continue as Guest\" to try the app with just a display "
+                "name. Guest data only lasts for that browser session."
             )
 
-        with tab_tutorials:
-            st.markdown("**Getting started**")
-            st.markdown(
-                "1. **Patient Profile** — start here. Add any conditions, medications, "
-                "supplements, and goals so every other service can personalize itself "
-                "to you.\n"
-                "2. **Bloodwork Analysis** — upload a photo or PDF of a lab report; AI "
-                "reads the values, you review/correct them, then save to see flagged "
-                "results and a summary.\n"
-                "3. **Fitness Coach** — build your own workout routine from a curated "
-                "exercise library, or answer a short questionnaire to get an AI-suggested "
-                "diet + exercise plan, automatically enriched by your bloodwork and "
-                "Conditions Tracker data if you have any.\n"
-                "4. **Conditions Tracker** — pick a condition to monitor, then click any "
-                "day on the calendar to log symptoms; after a few entries, analyze "
-                "patterns to spot trends and possible triggers.\n"
-                "5. **Plate Score** — photograph or upload a meal photo for an instant "
-                "calorie/nutrition score, personalized to your profile."
-            )
-
-        with tab_qa:
-            with st.expander("Is this real medical advice?"):
-                st.write(
-                    "No. Every AI-generated summary is educational only. \"Consult a "
-                    "doctor\" flags are always computed with local rule-based logic, "
-                    "independent of the AI — always follow up with a real clinician."
-                )
-            with st.expander("Is my data private?"):
-                st.write(
-                    "Your data is stored to power your own account's features (trends, "
-                    "history, personalization) and isn't shared. Uploaded bloodwork/meal "
-                    "photos are read by the AI and not stored — only the extracted values "
-                    "are kept. Guest sessions aren't saved at all once you close the tab."
-                )
-            with st.expander("How does the AI work?"):
-                st.write(
-                    "Google's Gemini API reads documents/photos and writes explanatory "
-                    "text. Anything clinically significant (like a \"consult a doctor\" "
-                    "flag) is always decided by fixed rule-based logic, never by the AI."
-                )
-            with st.expander("What if I don't have a lab report to upload?"):
-                st.write(
-                    "Bloodwork Analysis requires an uploaded document, but every other "
-                    "service works without one — Fitness Coach falls back to its "
-                    "questionnaire, and Conditions Tracker/Plate Score/Patient Profile "
-                    "don't need bloodwork at all."
-                )
-            with st.expander("Do I need to create an account?"):
-                st.write(
-                    "No — use \"Continue as Guest\" to try the app with just a display "
-                    "name. Guest data only lasts for that browser session."
-                )
-
-        with tab_issues:
-            st.caption("Found a bug or something not working right? Let us know.")
-            st.session_state.setdefault("issue_form_version", 0)
-            iv = st.session_state.issue_form_version
-            description = st.text_area("What went wrong?", key=f"issue_description_v{iv}")
-            if st.button("Submit Report", key="submit_issue"):
-                if description.strip():
-                    chat_context = "\n".join(f"{m['role']}: {m['content']}" for m in st.session_state.help_chat)
-                    db.create_issue(user["email"], description.strip(), chat_context)
-                    st.session_state.issue_form_version += 1
-                    st.success("Thanks — this has been logged for review.")
-                    st.rerun()
-                else:
-                    st.warning("Please describe the issue before submitting.")
-
-        st.divider()
-        st.markdown("**🧭 Jump to a service**")
-        for label, service_key in SERVICE_NAV:
-            if st.button(label, key=f"nav_{service_key}", use_container_width=True):
-                st.session_state.current_service = service_key
+    with tab_issues:
+        st.caption("Found a bug or something not working right? Let us know.")
+        st.session_state.setdefault("issue_form_version", 0)
+        iv = st.session_state.issue_form_version
+        description = st.text_area("What went wrong?", key=f"issue_description_v{iv}")
+        if st.button("Submit Report", key="submit_issue"):
+            if description.strip():
+                chat_context = "\n".join(f"{m['role']}: {m['content']}" for m in st.session_state.help_chat)
+                db.create_issue(user["email"], description.strip(), chat_context)
+                st.session_state.issue_form_version += 1
+                st.success("Thanks — this has been logged for review.")
                 st.rerun()
+            else:
+                st.warning("Please describe the issue before submitting.")
 
 
 def render_sidebar_help(user):
